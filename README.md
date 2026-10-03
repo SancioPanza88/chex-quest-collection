@@ -1,24 +1,24 @@
 # Chex Quest Collection — PS Vita
 
-Launcher and native PS Vita homebrew port for **Chex Quest 1**, **Chex Quest 2**, and **Chex Quest 3: Vanilla Edition**. The games share one Vita app, a common set of controls, OPL3 audio, and the Doom/doomgeneric engine. Choose a game in the launcher with the D-pad and press **✕** or **START**. To play another title, close the app and open the Collection again.
+A native PS Vita launcher and port for **Chex Quest 1**, **Chex Quest 2**, and **Chex Quest 3: Vanilla Edition**. The launcher uses the supplied collection backdrop and an individual logo for each game; move the white highlight with the D-pad and press **Cross** or **START**. To switch games, close the app and launch the Collection again.
 
 <p align="center">
   <img src="sce_sys/livearea/contents/bg.png" alt="Chex Quest Collection artwork" width="840">
 </p>
 
-<p align="center"><em>Artwork della Chex Quest Collection per PS Vita.</em></p>
+<p align="center"><em>Chex Quest Collection artwork for PS Vita.</em></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/SancioPanza88/chexquest-vita/main/assets/1.webp" alt="Screenshot di gioco di Chex Quest su PS Vita" width="800">
+  <img src="https://raw.githubusercontent.com/SancioPanza88/chexquest-vita/main/assets/1.webp" alt="Chex Quest running on PS Vita" width="800">
 </p>
 
-<p align="center"><em>Screenshot di Chex Quest su PS Vita — cattura del port originale.</em></p>
+<p align="center"><em>Gameplay screenshot from the original PS Vita port.</em></p>
 
-> This repository and VPK contain code and artwork only. Obtain game data from a legitimate copy; the WAD and DEH files are copyrighted and are neither included nor distributed here.
+> This repository and its VPK contain code and artwork only. You must provide game data from a legitimate copy. Copyrighted WAD and DEH files are not included or distributed here.
 
-## Requirements and game files
+## Installation and game data
 
-Install the VPK on a PS Vita/PSTV with a compatible homebrew setup. Copy your legally obtained files to the following paths on the Vita:
+Install the VPK on a PS Vita/PSTV with a compatible homebrew setup. Copy your legally obtained game files to these locations on the Vita:
 
 | Game | Required files |
 | --- | --- |
@@ -26,29 +26,29 @@ Install the VPK on a PS Vita/PSTV with a compatible homebrew setup. Copy your le
 | Chex Quest 2 | `ux0:/data/chexquestcollection/CHEX.WAD` and `ux0:/data/chexquestcollection/CHEX2.WAD` |
 | Chex Quest 3: Vanilla Edition | `ux0:/data/chexquestcollection/chex3v.wad` and `ux0:/data/chexquestcollection/chex3.deh` |
 
-CQ2 is loaded as a PWAD over the original Chex Quest IWAD. The CQ3 DEH patch is required by the Vanilla Edition port. File names and paths above are case-sensitive on some storage setups; keep the spelling shown.
+Chex Quest 2 loads `CHEX2.WAD` as a PWAD over the original Chex Quest IWAD. The CQ3 Vanilla Edition requires its DEH patch. Keep the exact filenames shown above.
 
-## Comandi PS Vita (validi per tutti e tre i giochi)
+## PS Vita controls (shared by all three games)
 
-| Azione | Tasto PS Vita |
+| Action | PS Vita control |
 | --- | --- |
-| Muovi / cammina | Levetta sinistra |
-| Gira | Levetta destra |
-| Salvataggio rapido (slot 0) | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Up_button.svg" alt="D-pad su" height="24"> D-pad su |
-| Caricamento rapido (slot 0) | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Down_button.svg" alt="D-pad giù" height="24"> D-pad giù |
-| Arma precedente / successiva | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Left_button.svg" alt="D-pad sinistra" height="24"> / <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Right_button.svg" alt="D-pad destra" height="24">; tieni premuto per scorrere |
-| Seleziona arma 1–7 | Tocca la zona corrispondente nella fascia alta del touchscreen anteriore |
-| Spara | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStationSquare.svg" alt="Quadrato" height="24"> **Quadrato** oppure **R** |
-| Usa / apri porte | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStationCross.svg" alt="Croce" height="24"> **Croce** |
-| Corri | **L** |
-| Movimento laterale (modificatore) | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStationCircle.svg" alt="Cerchio" height="24"> **Cerchio** + levetta sinistra |
-| Mappa (automap) | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStationTriangle.svg" alt="Triangolo" height="24"> **Triangolo** |
-| Menu di gioco | **START** |
-| Conferma nei menu | **SELECT** |
+| Move / walk | Left analog stick |
+| Turn | Right analog stick |
+| Quick-save (slot 0) | D-pad Up |
+| Quick-load (slot 0) | D-pad Down |
+| Previous / next weapon | D-pad Left / Right; hold to cycle |
+| Select weapon 1–7 | Tap the matching section of the front touchscreen's top edge |
+| Fire | **Square** or **R** |
+| Use / open doors | **Cross** |
+| Run | **L** |
+| Strafe modifier | **Circle** + left analog stick |
+| Automap | **Triangle** |
+| In-game menu | **START** |
+| Confirm in menus | **SELECT** |
 
-Le frecce del D-pad hanno la stessa funzione in tutti e tre i giochi: **↑ salva**, **↓ carica**, **← / → cambia arma**. Non sono usate per muoversi; per il movimento usa la levetta sinistra.
+The D-pad has the same functions in every game: **Up saves**, **Down loads**, and **Left/Right cycle weapons**. Use the left analog stick for movement. Quick-save/load are available during a level; Down loads slot 0 only when a save exists.
 
-Salvataggio e caricamento rapidi sono disponibili durante una partita; **D-pad ↓** carica il salvataggio dello slot 0 se presente. Salvataggi e impostazioni sono separati per gioco in `ux0:/data/chexquestcollection/saves/cq1`, `cq2`, `cq3` e `cfg/cq1`, `cq2`, `cq3`. Log diagnostico: `ux0:/data/chexquestcollection/debug.log`.
+Save games and settings are kept separately for each title in `ux0:/data/chexquestcollection/saves/cq1`, `cq2`, `cq3` and `cfg/cq1`, `cq2`, `cq3`. Diagnostic log: `ux0:/data/chexquestcollection/debug.log`.
 
 ## Build
 
@@ -59,8 +59,10 @@ cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$VITASDK/share/vita.toolchain.cmake"
 cmake --build build --parallel 1
 ```
 
-The GitHub Actions workflow builds and uploads `ChexQuestCollection.vpk` as an artifact.
+GitHub Actions builds `ChexQuestCollection.vpk` and uploads it as a workflow artifact. Launcher artwork is converted to a compact RGB332 header by `python scripts/prepare_launcher.py`.
 
 ## Credits and legal notes
 
-Engine: [doomgeneric](https://github.com/ozkl/doomgeneric) and its Chocolate Doom-derived components. Vita SDK: [VitaSDK](https://vitasdk.org/). The Collection artwork was supplied in the workspace's `artwork da usare` folder. PlayStation button SVGs are linked from Wikimedia Commons: [D-pad up](https://commons.wikimedia.org/wiki/File:PlayStation_Up_button.svg), [down](https://commons.wikimedia.org/wiki/File:PlayStation_Down_button.svg), [left](https://commons.wikimedia.org/wiki/File:PlayStation_Left_button.svg), [right](https://commons.wikimedia.org/wiki/File:PlayStation_Right_button.svg), [Square](https://commons.wikimedia.org/wiki/File:PlayStationSquare.svg), [Cross](https://commons.wikimedia.org/wiki/File:PlayStationCross.svg), [Circle](https://commons.wikimedia.org/wiki/File:PlayStationCircle.svg), and [Triangle](https://commons.wikimedia.org/wiki/File:PlayStationTriangle.svg). Chex Quest names, game data, and third-party artwork remain the property of their respective owners; inclusion of a file here does not grant rights to redistribute copyrighted game data.
+Engine: [doomgeneric](https://github.com/ozkl/doomgeneric) and its Chocolate Doom-derived components. Vita SDK: [VitaSDK](https://vitasdk.org/). The launcher backdrop and game logos were supplied for this project. PlayStation button artwork is linked from Wikimedia Commons: [Up](https://commons.wikimedia.org/wiki/File:PlayStation_Up_button.svg), [Down](https://commons.wikimedia.org/wiki/File:PlayStation_Down_button.svg), [Left](https://commons.wikimedia.org/wiki/File:PlayStation_Left_button.svg), [Right](https://commons.wikimedia.org/wiki/File:PlayStation_Right_button.svg), [Square](https://commons.wikimedia.org/wiki/File:PlayStationSquare.svg), [Cross](https://commons.wikimedia.org/wiki/File:PlayStationCross.svg), [Circle](https://commons.wikimedia.org/wiki/File:PlayStationCircle.svg), and [Triangle](https://commons.wikimedia.org/wiki/File:PlayStationTriangle.svg).
+
+Chex Quest names, game data, and third-party artwork remain the property of their respective owners. This project does not grant permission to redistribute copyrighted game data.

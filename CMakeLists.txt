@@ -63,7 +63,7 @@ if(OPL3_IDX EQUAL -1)
 endif()
 
 add_executable(${PROJECT_NAME} ${DG_SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${DG_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${DG_DIR} "${CMAKE_SOURCE_DIR}")
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     VITA=1
     FEATURE_SOUND=1

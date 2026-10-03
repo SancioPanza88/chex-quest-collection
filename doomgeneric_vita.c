@@ -18,6 +18,7 @@
 
 extern void D_PostEvent(event_t *ev);
 #include "opl3.h"
+#include "launcher_art.h"
 #include <stdint.h>
 #include <math.h>
 #include <psp2/apputil.h>
@@ -55,6 +56,7 @@ static SceUID fb_memuid;
 static void *fb_base = NULL;
 static int display_ready = 0, frame_count = 0;
 static uint32_t cmap[256];
+static int launcher_frame = 0;
 static uint32_t base_time = 0;
 
 static uint32_t get_ms(void) { return sceKernelGetProcessTimeLow() / 1000; }
@@ -132,7 +134,7 @@ static int save_directory_ready = 0;
 void I_InitGraphics(void);
 void I_FinishUpdate(void);
 
-static const char menu_glyphs[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-.";
+static const char menu_glyphs[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-./<";
 static const unsigned char menu_font[][5] = {
     {0x7e,0x11,0x11,0x11,0x7e},{0x7f,0x49,0x49,0x49,0x36},{0x3e,0x41,0x41,0x41,0x22},
     {0x7f,0x41,0x41,0x22,0x1c},{0x7f,0x49,0x49,0x49,0x41},{0x7f,0x09,0x09,0x09,0x01},
@@ -146,7 +148,8 @@ static const unsigned char menu_font[][5] = {
     {0x00,0x42,0x7f,0x40,0x00},{0x62,0x51,0x49,0x49,0x46},{0x22,0x41,0x49,0x49,0x36},
     {0x18,0x14,0x12,0x7f,0x10},{0x2f,0x49,0x49,0x49,0x31},{0x3e,0x49,0x49,0x49,0x32},
     {0x01,0x71,0x09,0x05,0x03},{0x36,0x49,0x49,0x49,0x36},{0x26,0x49,0x49,0x49,0x3e},
-    {0x00,0x36,0x36,0x00,0x00},{0x00,0x40,0x40,0x00,0x00},{0x00,0x60,0x60,0x00,0x00}
+    {0x00,0x36,0x36,0x00,0x00},{0x00,0x40,0x40,0x00,0x00},{0x00,0x60,0x60,0x00,0x00},
+    {0x60,0x10,0x08,0x04,0x03},{0x11,0x0a,0x04,0x00,0x00}
 };
 
 static void draw_menu_text(int x, int y, const char *text, byte color)
@@ -167,25 +170,76 @@ static void draw_menu_text(int x, int y, const char *text, byte color)
     }
 }
 
+static void launcher_rect(int x, int y, int w, int h, byte color)
+{
+    int row;
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > SCREENWIDTH) w = SCREENWIDTH - x;
+    if (y + h > SCREENHEIGHT) h = SCREENHEIGHT - y;
+    if (w <= 0 || h <= 0) return;
+    for (row = 0; row < h; ++row)
+        memset(I_VideoBuffer + (y + row) * SCREENWIDTH + x, color, w);
+}
+
+static void launcher_logo_pixel(int x, int y, int width, int height,
+                                const unsigned char *logo, int selected)
+{
+    int px, py;
+    for (py = 0; py < height; ++py) {
+        for (px = 0; px < width; ++px) {
+            int pos = (py * width + px) * 2;
+            unsigned char alpha = logo[pos + 1];
+            if (!alpha || (!selected && alpha < 128)) continue;
+            if (x + px >= 0 && x + px < SCREENWIDTH && y + py >= 0 && y + py < SCREENHEIGHT)
+                I_VideoBuffer[(y + py) * SCREENWIDTH + x + px] = selected ? 255 : logo[pos];
+        }
+    }
+}
+
 static void draw_launcher(int selected)
 {
-    static const char *games[] = { "CHEX QUEST 1", "CHEX QUEST 2", "CHEX QUEST 3" };
-    int i, y, x;
-    memset(I_VideoBuffer, 12, SCREENWIDTH * SCREENHEIGHT);
-    for (y = 0; y < SCREENHEIGHT; ++y)
-        for (x = 0; x < SCREENWIDTH; ++x)
-            if (((x / 8) + (y / 8)) & 1) I_VideoBuffer[y * SCREENWIDTH + x] = 16;
-    draw_menu_text(49, 20, "CHEX QUEST COLLECTION", 245);
-    draw_menu_text(76, 43, "SELECT A GAME", 190);
-    for (i = 0; i < 3; ++i)
-    {
-        int top = 68 + i * 31;
-        memset(I_VideoBuffer + top * SCREENWIDTH + 42, i == selected ? 80 : 28, 236);
-        memset(I_VideoBuffer + (top + 1) * SCREENWIDTH + 42, i == selected ? 80 : 28, 236);
-        draw_menu_text(61, top + 8, games[i], i == selected ? 250 : 205);
+    static const char *names[] = { "CHEX QUEST 1", "CHEX QUEST 2", "CHEX QUEST 3" };
+    static const char *editions[] = { "THE ORIGINAL ADVENTURE", "THE LOST LEVELS", "VANILLA EDITION" };
+    static const unsigned char *logos[] = {
+        (const unsigned char *)launcher_logo_cq1,
+        (const unsigned char *)launcher_logo_cq2,
+        (const unsigned char *)launcher_logo_cq3
+    };
+    static const int logo_w[] = { LAUNCHER_LOGO_CQ1_W, LAUNCHER_LOGO_CQ2_W, LAUNCHER_LOGO_CQ3_W };
+    static const int logo_h[] = { LAUNCHER_LOGO_CQ1_H, LAUNCHER_LOGO_CQ2_H, LAUNCHER_LOGO_CQ3_H };
+    int i, top, row;
+    launcher_frame = 1;
+    memcpy(I_VideoBuffer, launcher_bg, SCREENWIDTH * SCREENHEIGHT);
+
+    /* Header, three horizontal game tiles, and a high-contrast white selection. */
+    launcher_rect(0, 0, SCREENWIDTH, 31, 12);
+    launcher_rect(0, 30, SCREENWIDTH, 1, 250);
+    draw_menu_text(12, 8, "CHEX QUEST COLLECTION", 255);
+    draw_menu_text(234, 8, "SELECT A GAME", 224);
+
+    for (i = 0; i < 3; ++i) {
+        top = 43 + i * 43;
+        if (i == selected) {
+            launcher_rect(8, top - 3, 304, 39, 255);
+            launcher_rect(10, top - 1, 300, 35, 18);
+            for (row = 0; row < 33; row += 2)
+                launcher_rect(11, top + row, 298, 1, 22);
+        } else {
+            launcher_rect(8, top - 3, 304, 39, 96);
+            launcher_rect(10, top - 1, 300, 35, 12);
+        }
+        launcher_logo_pixel(18, top + 1, logo_w[i], logo_h[i], logos[i], i == selected);
+        draw_menu_text(119, top + 6, names[i], i == selected ? 255 : 248);
+        draw_menu_text(119, top + 20, editions[i], i == selected ? 255 : 224);
+        if (i == selected) {
+            draw_menu_text(290, top + 10, "<", 255);
+        }
     }
-    draw_menu_text(37, 174, "LEFT RIGHT SELECT X START LAUNCH", 235);
-    draw_menu_text(106, 187, "TRIANGLE EXIT", 210);
+
+    launcher_rect(0, 174, SCREENWIDTH, 26, 12);
+    draw_menu_text(9, 178, "LEFT/RIGHT OR UP/DOWN: CHOOSE", 255);
+    draw_menu_text(9, 189, "X / START: LAUNCH     TRIANGLE: EXIT", 232);
     I_FinishUpdate();
 }
 
@@ -1093,6 +1147,14 @@ void I_SetPalette(byte *pal) {
     cmap[i] = 0xFF000000u | (b << 16) | (g << 8) | r;
   }
 }
+static uint32_t launcher_rgb(unsigned char index)
+{
+  uint32_t r = ((index >> 5) & 7) * 255 / 7;
+  uint32_t g = ((index >> 2) & 7) * 255 / 7;
+  uint32_t b = (index & 3) * 255 / 3;
+  return 0xFF000000u | (b << 16) | (g << 8) | r;
+}
+
 void I_FinishUpdate(void) {
   uint32_t *dst;
   int x, y, step_x, step_y, sy_f;
@@ -1116,7 +1178,11 @@ void I_FinishUpdate(void) {
       int sx = sx_f >> 16;
       if (sx >= SCREENWIDTH)
         sx = SCREENWIDTH - 1;
-      dr[x] = cmap[sr[sx]];
+      if (launcher_frame) {
+        dr[x] = launcher_rgb(sr[sx]);
+      } else {
+        dr[x] = cmap[sr[sx]];
+      }
       sx_f += step_x;
     }
     sy_f += step_y;
@@ -1566,6 +1632,8 @@ int main(int argc, char **argv) {
       previous = pad;
       sceKernelDelayThread(16000);
     }
+    /* Restore Doom's normal palette conversion before gameplay rendering. */
+    launcher_frame = 0;
 
     {
       char *nargv[8];

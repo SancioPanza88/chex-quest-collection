@@ -44,6 +44,23 @@ class CollectionContractTests(unittest.TestCase):
                     self.assertEqual(image.size, size)
                     self.assertEqual(image.mode, "P")
 
+    def test_launcher_uses_supplied_background_and_game_logos(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        generated = (ROOT / "launcher_art.h").read_text(encoding="ascii")
+        for marker in ("launcher_bg", "launcher_logo_cq1", "launcher_logo_cq2", "launcher_logo_cq3"):
+            self.assertIn(marker, generated)
+        self.assertIn("memcpy(I_VideoBuffer, launcher_bg", source)
+        self.assertIn("selected ? 255 : logo[pos]", source)
+        for filename in ("assets/logo_chexquest1.png", "assets/logo_chexquest2.png", "assets/logo_chexquest3.png", "launcher.jfif"):
+            self.assertTrue((ROOT / filename).is_file(), filename)
+
+    def test_readme_is_english(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("## PS Vita controls", readme)
+        self.assertIn("## Installation and game data", readme)
+        self.assertNotIn("Comandi PS Vita", readme)
+        self.assertNotIn("Le frecce del D-pad", readme)
+
     def test_wad_and_deh_assets_are_not_staged(self):
         for path in ROOT.rglob("*"):
             if ".git" in path.parts or "build" in path.parts:
