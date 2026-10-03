@@ -50,7 +50,15 @@ class CollectionContractTests(unittest.TestCase):
         for marker in ("launcher_bg", "launcher_logo_cq1", "launcher_logo_cq2", "launcher_logo_cq3"):
             self.assertIn(marker, generated)
         self.assertIn("memcpy(I_VideoBuffer, launcher_bg", source)
-        self.assertIn("selected ? 255 : logo[pos]", source)
+        self.assertNotIn("selected ? 255 : logo[pos]", source)
+        self.assertIn("I_VideoBuffer[(y + py) * SCREENWIDTH + x + px] = logo[pos]", source)
+        self.assertIn("menu_music_rate_phase += 22050", source)
+        self.assertIn("#define OUTPUT_RATE 48000", source)
+        self.assertNotIn("editions[]", source)
+        self.assertIn('sceIoOpen("app0:/menu_music.pcm", SCE_O_RDONLY, 0)', source)
+        self.assertIn("menu_music_active = 0", source)
+        self.assertTrue((ROOT / "assets/menu_music.pcm").is_file())
+        self.assertIn('vpk_add_asset("${CMAKE_SOURCE_DIR}/assets/menu_music.pcm" "menu_music.pcm")', (ROOT / "CMakeLists.txt").read_text(encoding="utf-8"))
         for filename in ("assets/logo_chexquest1.png", "assets/logo_chexquest2.png", "assets/logo_chexquest3.png", "launcher.jfif"):
             self.assertTrue((ROOT / filename).is_file(), filename)
 

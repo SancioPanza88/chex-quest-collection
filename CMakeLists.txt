@@ -95,6 +95,7 @@ vpk_add_asset("${SCE_SYS}/icon0.png" "sce_sys/icon0.png")
 vpk_add_asset("${SCE_SYS}/livearea/contents/bg.png" "sce_sys/livearea/contents/bg.png")
 vpk_add_asset("${SCE_SYS}/livearea/contents/startup.png" "sce_sys/livearea/contents/startup.png")
 vpk_add_asset("${SCE_SYS}/livearea/contents/template.xml" "sce_sys/livearea/contents/template.xml")
+vpk_add_asset("${CMAKE_SOURCE_DIR}/assets/menu_music.pcm" "menu_music.pcm")
 
 vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
     VERSION ${VITA_VERSION}

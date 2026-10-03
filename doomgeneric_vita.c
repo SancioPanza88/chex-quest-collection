@@ -57,6 +57,11 @@ static void *fb_base = NULL;
 static int display_ready = 0, frame_count = 0;
 static uint32_t cmap[256];
 static int launcher_frame = 0;
+static const unsigned char *menu_music_data = NULL;
+static int menu_music_length = 0;
+static int menu_music_position = 0;
+static int menu_music_rate_phase = 0;
+static volatile int menu_music_active = 0;
 static uint32_t base_time = 0;
 
 static uint32_t get_ms(void) { return sceKernelGetProcessTimeLow() / 1000; }
@@ -183,16 +188,16 @@ static void launcher_rect(int x, int y, int w, int h, byte color)
 }
 
 static void launcher_logo_pixel(int x, int y, int width, int height,
-                                const unsigned char *logo, int selected)
+                                const unsigned char *logo)
 {
     int px, py;
     for (py = 0; py < height; ++py) {
         for (px = 0; px < width; ++px) {
             int pos = (py * width + px) * 2;
             unsigned char alpha = logo[pos + 1];
-            if (!alpha || (!selected && alpha < 128)) continue;
+            if (!alpha || alpha < 128) continue;
             if (x + px >= 0 && x + px < SCREENWIDTH && y + py >= 0 && y + py < SCREENHEIGHT)
-                I_VideoBuffer[(y + py) * SCREENWIDTH + x + px] = selected ? 255 : logo[pos];
+                I_VideoBuffer[(y + py) * SCREENWIDTH + x + px] = logo[pos];
         }
     }
 }
@@ -200,7 +205,6 @@ static void launcher_logo_pixel(int x, int y, int width, int height,
 static void draw_launcher(int selected)
 {
     static const char *names[] = { "CHEX QUEST 1", "CHEX QUEST 2", "CHEX QUEST 3" };
-    static const char *editions[] = { "THE ORIGINAL ADVENTURE", "THE LOST LEVELS", "VANILLA EDITION" };
     static const unsigned char *logos[] = {
         (const unsigned char *)launcher_logo_cq1,
         (const unsigned char *)launcher_logo_cq2,
@@ -208,7 +212,7 @@ static void draw_launcher(int selected)
     };
     static const int logo_w[] = { LAUNCHER_LOGO_CQ1_W, LAUNCHER_LOGO_CQ2_W, LAUNCHER_LOGO_CQ3_W };
     static const int logo_h[] = { LAUNCHER_LOGO_CQ1_H, LAUNCHER_LOGO_CQ2_H, LAUNCHER_LOGO_CQ3_H };
-    int i, top, row;
+    int i, top;
     launcher_frame = 1;
     memcpy(I_VideoBuffer, launcher_bg, SCREENWIDTH * SCREENHEIGHT);
 
@@ -223,15 +227,12 @@ static void draw_launcher(int selected)
         if (i == selected) {
             launcher_rect(8, top - 3, 304, 39, 255);
             launcher_rect(10, top - 1, 300, 35, 18);
-            for (row = 0; row < 33; row += 2)
-                launcher_rect(11, top + row, 298, 1, 22);
         } else {
             launcher_rect(8, top - 3, 304, 39, 96);
             launcher_rect(10, top - 1, 300, 35, 12);
         }
-        launcher_logo_pixel(18, top + 1, logo_w[i], logo_h[i], logos[i], i == selected);
-        draw_menu_text(119, top + 6, names[i], i == selected ? 255 : 248);
-        draw_menu_text(119, top + 20, editions[i], i == selected ? 255 : 224);
+        launcher_logo_pixel(18, top + 1, logo_w[i], logo_h[i], logos[i]);
+        draw_menu_text(119, top + 12, names[i], i == selected ? 255 : 248);
         if (i == selected) {
             draw_menu_text(290, top + 10, "<", 255);
         }
@@ -950,7 +951,27 @@ static int sfx_thread_func(SceSize args, void *argp) {
   (void)argp;
   while (sfx_running) {
     int16_t *buf = sfx_buf[sfx_buf_idx];
+    int sample;
     mix_into(buf, AUDIO_GRANULARITY);
+    if (menu_music_active && menu_music_data && menu_music_length > 0) {
+      for (sample = 0; sample < AUDIO_GRANULARITY; ++sample) {
+        int16_t music_sample = ((int)menu_music_data[menu_music_position] - 128) * 256;
+        int32_t mixed_left = (int32_t)buf[sample * 2] + music_sample;
+        int32_t mixed_right = (int32_t)buf[sample * 2 + 1] + music_sample;
+        if (mixed_left > 32767) mixed_left = 32767;
+        if (mixed_left < -32768) mixed_left = -32768;
+        if (mixed_right > 32767) mixed_right = 32767;
+        if (mixed_right < -32768) mixed_right = -32768;
+        buf[sample * 2] = (int16_t)mixed_left;
+        buf[sample * 2 + 1] = (int16_t)mixed_right;
+        menu_music_rate_phase += 22050;
+        if (menu_music_rate_phase >= OUTPUT_RATE) {
+          menu_music_rate_phase -= OUTPUT_RATE;
+          if (++menu_music_position == menu_music_length)
+            menu_music_position = 0;
+        }
+      }
+    }
     sceAudioOutOutput(sfx_port, buf);
     sfx_buf_idx ^= 1;
   }
@@ -1617,6 +1638,35 @@ int main(int argc, char **argv) {
   base_time = get_ms();
   I_InitGraphics();
   draw_launcher(selected);
+  {
+    SceUID music_file = sceIoOpen("app0:/menu_music.pcm", SCE_O_RDONLY, 0);
+    if (music_file >= 0) {
+      SceIoStat music_stat;
+      memset(&music_stat, 0, sizeof(music_stat));
+      if (sceIoGetstat("app0:/menu_music.pcm", &music_stat) >= 0
+          && music_stat.st_size > 0 && music_stat.st_size <= 3 * 1024 * 1024) {
+        unsigned char *music = (unsigned char *)malloc((size_t)music_stat.st_size);
+        if (music) {
+          int read_size = sceIoRead(music_file, music, (unsigned int)music_stat.st_size);
+          if (read_size == music_stat.st_size) {
+            menu_music_data = music;
+            menu_music_length = read_size;
+            menu_music_position = 0;
+            menu_music_rate_phase = 0;
+            start_audio_system();
+            menu_music_active = audio_ready;
+            debug_logf("Menu music loaded: %d bytes, audio=%d", read_size, audio_ready);
+          } else {
+            free(music);
+            debug_logf("Menu music read failed: %d", read_size);
+          }
+        }
+      }
+      sceIoClose(music_file);
+    } else {
+      debug_log("Menu music unavailable; continuing silently");
+    }
+  }
 
   {
     SceCtrlData previous, pad;
@@ -1632,7 +1682,8 @@ int main(int argc, char **argv) {
       previous = pad;
       sceKernelDelayThread(16000);
     }
-    /* Restore Doom's normal palette conversion before gameplay rendering. */
+    /* Stop menu audio and restore Doom's normal palette conversion. */
+    menu_music_active = 0;
     launcher_frame = 0;
 
     {
