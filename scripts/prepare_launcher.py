@@ -48,7 +48,7 @@ for name, path in LOGOS:
                 color = min(255, color + 32)
             values.extend((color, alpha))
     lines.extend([f"#define LAUNCHER_LOGO_{name.upper()}_W {width}", f"#define LAUNCHER_LOGO_{name.upper()}_H {height}"])
-    emit_array(lines, f"launcher_logo_{name}[{width * height}][2]", values)
+    emit_array(lines, f"launcher_logo_{name}", values)
 lines.extend(["#endif", ""])
 OUTPUT.write_text("\n".join(lines), encoding="ascii")
 print(f"Wrote {OUTPUT.relative_to(ROOT)} from launcher.jfif and {len(LOGOS)} logos")
