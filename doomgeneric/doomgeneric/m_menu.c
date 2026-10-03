@@ -44,6 +44,7 @@
 #include "hu_stuff.h"
 
 #include "g_game.h"
+#include "p_saveg.h"
 
 #include "m_argv.h"
 #include "m_controls.h"
