@@ -1,6 +1,18 @@
 # Chex Quest Collection — PS Vita
 
-Launcher and native PS Vita homebrew port for **Chex Quest 1**, **Chex Quest 2**, and **Chex Quest 3: Vanilla Edition**. The games share one Vita app, a common set of controls, OPL3 audio, and the Doom/doomgeneric engine. Choose a game in the launcher with the D-pad and press **X** or **Start**. To play another title, close the app and open the Collection again.
+Launcher and native PS Vita homebrew port for **Chex Quest 1**, **Chex Quest 2**, and **Chex Quest 3: Vanilla Edition**. The games share one Vita app, a common set of controls, OPL3 audio, and the Doom/doomgeneric engine. Choose a game in the launcher with the D-pad and press **✕** or **START**. To play another title, close the app and open the Collection again.
+
+<p align="center">
+  <img src="sce_sys/livearea/contents/bg.png" alt="Chex Quest Collection artwork" width="840">
+</p>
+
+<p align="center"><em>Artwork della Chex Quest Collection per PS Vita.</em></p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/SancioPanza88/chexquest-vita/main/assets/1.webp" alt="Screenshot di gioco di Chex Quest su PS Vita" width="800">
+</p>
+
+<p align="center"><em>Screenshot di Chex Quest su PS Vita — cattura del port originale.</em></p>
 
 > This repository and VPK contain code and artwork only. Obtain game data from a legitimate copy; the WAD and DEH files are copyrighted and are neither included nor distributed here.
 
@@ -16,25 +28,27 @@ Install the VPK on a PS Vita/PSTV with a compatible homebrew setup. Copy your le
 
 CQ2 is loaded as a PWAD over the original Chex Quest IWAD. The CQ3 DEH patch is required by the Vanilla Edition port. File names and paths above are case-sensitive on some storage setups; keep the spelling shown.
 
-## Controls (all three games)
+## Comandi PS Vita (validi per tutti e tre i giochi)
 
-| Action | Input |
+| Azione | Tasto PS Vita |
 | --- | --- |
-| Move | Left stick; D-pad directions are reserved for the actions below |
-| Turn | Right stick |
-| Quick save (slot 0) | D-pad **Up** |
-| Quick load (slot 0) | D-pad **Down** |
-| Previous / next weapon | D-pad **Left / Right**; hold to repeat |
-| Select weapon 1–7 | Tap the matching zone on the upper front touchscreen |
-| Fire | Square or R trigger |
-| Use / open | Cross |
-| Run | L trigger |
-| Strafe modifier | Circle |
-| Automap | Triangle |
-| In-game menu | Start |
-| Menu confirm | Select |
+| Muovi / cammina | **Levetta sinistra** |
+| Gira | **Levetta destra** |
+| Salvataggio rapido (slot 0) | **D-pad ↑** |
+| Caricamento rapido (slot 0) | **D-pad ↓** |
+| Arma precedente / successiva | **D-pad ← / →**; tieni premuto per scorrere |
+| Seleziona arma 1–7 | Tocca la zona corrispondente nella fascia alta del **touchscreen anteriore** |
+| Spara | **□ (Quadrato)** oppure **R** |
+| Usa / apri porte | **✕ (Croce)** |
+| Corri | **L** |
+| Movimento laterale (modificatore) | **○ (Cerchio)** + levetta sinistra |
+| Mappa (automap) | **△ (Triangolo)** |
+| Menu di gioco | **START** |
+| Conferma nei menu | **SELECT** |
 
-Quick save/load are available during gameplay; Down loads the most recent slot-0 save when one exists. Save files and per-game settings are kept separate under `ux0:/data/chexquestcollection/saves/cq1`, `cq2`, `cq3` and `cfg/cq1`, `cq2`, `cq3`. Diagnostic log: `ux0:/data/chexquestcollection/debug.log`.
+Le frecce del D-pad hanno la stessa funzione in tutti e tre i giochi: **↑ salva**, **↓ carica**, **← / → cambia arma**. Non sono usate per muoversi; per il movimento usa la levetta sinistra.
+
+Salvataggio e caricamento rapidi sono disponibili durante una partita; **D-pad ↓** carica il salvataggio dello slot 0 se presente. Salvataggi e impostazioni sono separati per gioco in `ux0:/data/chexquestcollection/saves/cq1`, `cq2`, `cq3` e `cfg/cq1`, `cq2`, `cq3`. Log diagnostico: `ux0:/data/chexquestcollection/debug.log`.
 
 ## Build
 
