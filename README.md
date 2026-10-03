@@ -32,17 +32,17 @@ CQ2 is loaded as a PWAD over the original Chex Quest IWAD. The CQ3 DEH patch is 
 
 | Azione | Tasto PS Vita |
 | --- | --- |
-| Muovi / cammina | **Levetta sinistra** |
-| Gira | **Levetta destra** |
-| Salvataggio rapido (slot 0) | **D-pad ↑** |
-| Caricamento rapido (slot 0) | **D-pad ↓** |
-| Arma precedente / successiva | **D-pad ← / →**; tieni premuto per scorrere |
-| Seleziona arma 1–7 | Tocca la zona corrispondente nella fascia alta del **touchscreen anteriore** |
-| Spara | **□ (Quadrato)** oppure **R** |
-| Usa / apri porte | **✕ (Croce)** |
+| Muovi / cammina | Levetta sinistra |
+| Gira | Levetta destra |
+| Salvataggio rapido (slot 0) | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Up_button.svg" alt="D-pad su" height="24"> D-pad su |
+| Caricamento rapido (slot 0) | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Down_button.svg" alt="D-pad giù" height="24"> D-pad giù |
+| Arma precedente / successiva | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Left_button.svg" alt="D-pad sinistra" height="24"> / <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Right_button.svg" alt="D-pad destra" height="24">; tieni premuto per scorrere |
+| Seleziona arma 1–7 | Tocca la zona corrispondente nella fascia alta del touchscreen anteriore |
+| Spara | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStationSquare.svg" alt="Quadrato" height="24"> **Quadrato** oppure **R** |
+| Usa / apri porte | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStationCross.svg" alt="Croce" height="24"> **Croce** |
 | Corri | **L** |
-| Movimento laterale (modificatore) | **○ (Cerchio)** + levetta sinistra |
-| Mappa (automap) | **△ (Triangolo)** |
+| Movimento laterale (modificatore) | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStationCircle.svg" alt="Cerchio" height="24"> **Cerchio** + levetta sinistra |
+| Mappa (automap) | <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStationTriangle.svg" alt="Triangolo" height="24"> **Triangolo** |
 | Menu di gioco | **START** |
 | Conferma nei menu | **SELECT** |
 
@@ -63,4 +63,4 @@ The GitHub Actions workflow builds and uploads `ChexQuestCollection.vpk` as an a
 
 ## Credits and legal notes
 
-Engine: [doomgeneric](https://github.com/ozkl/doomgeneric) and its Chocolate Doom-derived components. Vita SDK: [VitaSDK](https://vitasdk.org/). The Collection artwork was supplied in the workspace's `artwork da usare` folder. Chex Quest names, game data, and third-party artwork remain the property of their respective owners; inclusion of a file here does not grant rights to redistribute copyrighted game data.
+Engine: [doomgeneric](https://github.com/ozkl/doomgeneric) and its Chocolate Doom-derived components. Vita SDK: [VitaSDK](https://vitasdk.org/). The Collection artwork was supplied in the workspace's `artwork da usare` folder. PlayStation button SVGs are linked from Wikimedia Commons: [D-pad up](https://commons.wikimedia.org/wiki/File:PlayStation_Up_button.svg), [down](https://commons.wikimedia.org/wiki/File:PlayStation_Down_button.svg), [left](https://commons.wikimedia.org/wiki/File:PlayStation_Left_button.svg), [right](https://commons.wikimedia.org/wiki/File:PlayStation_Right_button.svg), [Square](https://commons.wikimedia.org/wiki/File:PlayStationSquare.svg), [Cross](https://commons.wikimedia.org/wiki/File:PlayStationCross.svg), [Circle](https://commons.wikimedia.org/wiki/File:PlayStationCircle.svg), and [Triangle](https://commons.wikimedia.org/wiki/File:PlayStationTriangle.svg). Chex Quest names, game data, and third-party artwork remain the property of their respective owners; inclusion of a file here does not grant rights to redistribute copyrighted game data.
