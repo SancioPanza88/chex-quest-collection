@@ -1,0 +1,11 @@
+*.wad
+*.WAD
+*.deh
+*.DEH
+*.ipk3
+*.IPK3
+/build/
+__pycache__/
+cmake-build-*/
+chex2-reference/
+chexquest-vita-main/
