@@ -2168,6 +2168,7 @@ char *M_GetSaveGameDir(char *iwadname)
         M_MakeDirectory(savegamedir);
 
         printf ("Using %s for savegames\n", savegamedir);
+#endif
     }
 
     return savegamedir;
