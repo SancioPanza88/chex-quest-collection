@@ -75,6 +75,11 @@ static void debug_logf(const char *fmt, ...) {
   debug_log(buf);
 }
 
+static void fatal_error(const char *message) {
+  debug_logf("FATAL: %s", message);
+  sceKernelExitProcess(1);
+}
+
 static void init_display(void) {
   int sz = (960 * 544 * 4 + 0xFFFFF) & ~0xFFFFF;
   SceDisplayFrameBuf fb;
