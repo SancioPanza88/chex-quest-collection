@@ -8,9 +8,9 @@ Get [`ChexQuestCollection.vpk`](https://github.com/SancioPanza88/chex-quest-coll
 
 The VPK contains the launcher, not game data. Copy legally obtained files to `ux0:/data/chexquestcollection/`:
 
-- **Chex Quest 1:** `CHEX.WAD`
-- **Chex Quest 2:** `CHEX.WAD` and `CHEX2.WAD`
-- **Chex Quest 3 Vanilla:** `chex3v.wad` and `chex3.deh`
+- `CHEX.WAD`
+- `CHEX2.WAD`
+- `chex3v.wad` and `chex3.deh`
 
 ## Controls
 
