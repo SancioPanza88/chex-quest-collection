@@ -6,11 +6,23 @@ One Vita app for **Chex Quest 1**, **Chex Quest 2**, and **Chex Quest 3: Vanilla
 
 Get [`ChexQuestCollection.vpk`](https://github.com/SancioPanza88/chex-quest-collection/releases/latest/download/ChexQuestCollection.vpk) from Releases and install it on a homebrew-enabled PS Vita/PSTV.
 
-The VPK contains the launcher, not game data. Copy legally obtained files to `ux0:/data/chexquestcollection/`:
+The VPK contains the launcher, not game data. Copy legally obtained files directly into `ux0:/data/chexquestcollection/`:
 
 - `CHEX.WAD`
 - `CHEX2.WAD`
 - `chex3v.wad` and `chex3.deh`
+
+**Important:** put all the files together in the `chexquestcollection` folder itself. Do **not** create subfolders (for example `chexquestcollection/chexquest/` or `chexquestcollection/chex3/`): the launcher will not find files placed inside subfolders.
+
+Expected layout:
+
+```
+ux0:/data/chexquestcollection/
+├── CHEX.WAD
+├── CHEX2.WAD
+├── chex3v.wad
+└── chex3.deh
+```
 
 ## Controls
 
