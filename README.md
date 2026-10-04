@@ -29,5 +29,4 @@ Install VitaSDK, then run:
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$VITASDK/share/vita.toolchain.cmake"
 cmake --build build --parallel 1
 ```
-
-The GitHub Actions workflow builds the VPK. Game data and third-party trademarks/artwork remain the property of their respective owners; this project does not distribute WAD or DEH files.
+ Game data and third-party trademarks/artwork remain the property of their respective owners; this project does not distribute WAD or DEH files.
