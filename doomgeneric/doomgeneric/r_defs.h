@@ -128,6 +128,13 @@ typedef	struct
     int			linecount;
     struct line_s**	lines;	// [linecount] size
     
+    // [Vita] Floor and ceiling height at the previous tic. The 60 frames per
+    // second mode draws doors, lifts and moving floors from these two values,
+    // so they move continuously instead of stepping once per game tic. Never
+    // part of the savegame format.
+    fixed_t	prev_floorheight;
+    fixed_t	prev_ceilingheight;
+
 } sector_t;
 
 

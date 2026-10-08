@@ -235,6 +235,34 @@ software, so the cost doubles), a second input mapping, and a duplicated HUD
 inside 960x544. Each half would be 480x272 — the same budget we may not even
 reach at full screen for 60 fps. No.
 
+## 60 fps: what is interpolated, and the crash that was fixed
+
+The 60 fps mode draws once per vsync and interpolates between the last two game
+tics. Everything that moves is interpolated: the camera, every thing (monsters,
+projectiles, items), the weapon sway, and the sector floor/ceiling heights - so
+doors, lifts and moving floors slide instead of stepping 35 times per second.
+
+The first build that interpolated the things crashed the console as soon as a
+game ran at 60 fps. The cause was the walk over the engine's thinker list: it
+assumed the list was built, but `thinkercap` is a zeroed global and
+`P_InitThinkers()` is called only from `P_SetupLevel` and from the savegame
+unarchive (`P_Init()` does not call it). On the title screen - before the first
+level - `thinkercap.next` is NULL, so `th->function.acp1` read address zero.
+The port now starts the walk from `thing_list()`, which returns nothing unless a
+level is up (`gamestate == GS_LEVEL`) and the head is a real pointer. The sector
+heights go through the `sectors[]` array, which needs no list walk at all.
+
+Three more guards keep the interpolation harmless:
+
+- values that did not change are not exchanged at all (most things and nearly
+  all sectors stand still, so this also saves the work);
+- a jump larger than one tic of movement - a teleport, a spawn, a rebuilt level
+  - is never interpolated, so a stale value can only ever be drawn a tic away
+  from the truth;
+- after a wipe or a hiccup `TryRunTics()` catches up several tics at once; the
+  frames that follow are drawn from the state those tics produced, with no
+  interpolation in between.
+
 ## Proposed v1.2 scope
 
 1. Cheats menu (launcher + in-game) — small, self-contained.

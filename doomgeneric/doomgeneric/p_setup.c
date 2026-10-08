@@ -286,6 +286,9 @@ void P_LoadSectors (int lump)
 	ss->special = SHORT(ms->special);
 	ss->tag = SHORT(ms->tag);
 	ss->thinglist = NULL;
+	// [Vita] Interpolation starts from the height the level was built with.
+	ss->prev_floorheight = ss->floorheight;
+	ss->prev_ceilingheight = ss->ceilingheight;
     }
 	
     W_ReleaseLumpNum(lump);

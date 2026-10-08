@@ -79,7 +79,7 @@ To leave a game and go back to the launcher, **hold L + R + SELECT for one secon
 
 ## Framerate
 
-Games draw at **60 fps** by default. The simulation still runs on Doom's fixed 35 Hz timestep, so the frame you see is interpolated between the last two tics: movement and turning, monsters, projectiles, items and the weapon sway are all continuous instead of stepping 35 times per second, at the cost of the picture being one tic (about 28 ms) behind the input. If you would rather have the most direct feel, open the **OPTIONS** screen with **SELECT** in the launcher and switch to **35 FPS (classic)**, which draws exactly one frame per tic like the original engine.
+Games draw at **60 fps** by default. The simulation still runs on Doom's fixed 35 Hz timestep, so the frame you see is interpolated between the last two tics: movement and turning, monsters, projectiles, items, the weapon sway and the sector heights — **doors, lifts and moving floors** — are all continuous instead of stepping 35 times per second, at the cost of the picture being one tic (about 28 ms) behind the input. A jump longer than a single tic of movement, like a teleport or a spawn, is never interpolated, so nothing smears across the map. If you would rather have the most direct feel, open the **OPTIONS** screen with **SELECT** in the launcher and switch to **35 FPS (classic)**, which draws exactly one frame per tic like the original engine.
 
 The choice is stored in `ux0:/data/chexquestcollection/settings.cfg` and applies the next time you start a game. The options screen also lists the full control mapping.
 

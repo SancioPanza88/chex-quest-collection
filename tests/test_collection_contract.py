@@ -85,7 +85,7 @@ class CollectionContractTests(unittest.TestCase):
         self.assertNotIn("if (launcher_frame) {", source)
         self.assertNotIn("sx_f += step_x;", source)
 
-    def test_things_and_weapon_are_interpolated_too(self):
+    def test_things_weapon_and_sectors_are_interpolated(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
         self.assertIn("static void things_snapshot(void)", source)
         self.assertIn("static void things_swap(int interpolate, uint32_t frac)", source)
@@ -95,10 +95,20 @@ class CollectionContractTests(unittest.TestCase):
         mobj = (ROOT / "doomgeneric/doomgeneric/p_mobj.h").read_text(encoding="utf-8")
         for field in ("prev_x;", "prev_y;", "prev_z;"):
             self.assertIn(field, mobj)
-        # ... and so does the weapon sprite.
+        # ... the weapon sprite carries its offset ...
         pspr = (ROOT / "doomgeneric/doomgeneric/p_pspr.h").read_text(encoding="utf-8")
         self.assertIn("prev_sx;", pspr)
         self.assertIn("prev_sy;", pspr)
+        # ... and so do the sectors, so doors, lifts and moving floors slide.
+        rdefs = (ROOT / "doomgeneric/doomgeneric/r_defs.h").read_text(encoding="utf-8")
+        sector = rdefs.split("} sector_t;")[0]
+        self.assertIn("prev_floorheight;", sector)
+        self.assertIn("prev_ceilingheight;", sector)
+        setup = (ROOT / "doomgeneric/doomgeneric/p_setup.c").read_text(encoding="utf-8")
+        self.assertIn("ss->prev_floorheight = ss->floorheight;", setup)
+        self.assertIn("sectors[i].prev_floorheight = sectors[i].floorheight;", source)
+        self.assertIn("sec->ceilingheight =", source)
+        self.assertIn("lerp_fixed(sec->ceilingheight, sec->prev_ceilingheight, frac)", source)
         # Spawns and loaded games start from a defined value instead of from
         # whatever the memory happened to contain.
         spawn = (ROOT / "doomgeneric/doomgeneric/p_mobj.c").read_text(encoding="utf-8")
@@ -108,6 +118,34 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn("str->psprites[i].prev_sx = str->psprites[i].sx;", saveg)
         # The savegame format itself must not change.
         self.assertNotIn("prev_x", saveg.split("saveg_write_mobj_t")[1].split("}")[0])
+        self.assertNotIn("prev_floorheight", saveg)
+        self.assertNotIn("prev_ceilingheight", saveg)
+
+    def test_interpolation_never_walks_an_unbuilt_thinker_list(self):
+        # The engine builds thinkercap only from P_SetupLevel and from the
+        # savegame unarchive. On the title screen it is still the zeroed global
+        # it starts as, so a blind walk dereferenced address zero and crashed
+        # the console as soon as a game ran at 60 fps.
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        self.assertIn('include "r_defs.h"', source)  # sector_t for the sectors
+        self.assertIn("static thinker_t *thing_list(void)", source)
+        self.assertIn("if (th == NULL || th == &thinkercap)", source)
+        self.assertIn("for (th = thing_list(); th != NULL && th != &thinkercap;", source)
+        self.assertNotIn("for (th = thinkercap.next; th != &thinkercap", source)
+        self.assertIn("static int sectors_ready(void)", source)
+        self.assertIn("return gamestate == GS_LEVEL && numsectors > 0 && sectors != NULL;", source)
+        # A jump longer than one tic of movement is a teleport or a spawn: it is
+        # drawn where it really is instead of being smeared across the map.
+        self.assertIn("#define INTERP_MAX_STEP", source)
+        self.assertIn("static int interp_near(fixed_t a, fixed_t b)", source)
+        # The invariant the guard relies on, straight from the engine.
+        tick = (ROOT / "doomgeneric/doomgeneric/p_tick.c").read_text(encoding="utf-8")
+        self.assertIn("thinkercap.prev = thinkercap.next  = &thinkercap;", tick)
+        # P_Init() does not build the list, only the level setup does, which is
+        # exactly why the walk must be guarded before the first level.
+        setup = (ROOT / "doomgeneric/doomgeneric/p_setup.c").read_text(encoding="utf-8")
+        self.assertIn("P_InitThinkers ();", setup)
+        self.assertNotIn("P_InitThinkers", setup.split("void P_Init (void)")[1].split("\n}")[0])
 
     def test_framerate_choice_is_saved_and_documented(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
@@ -118,6 +156,7 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn("## Framerate", readme)
         self.assertIn("35 FPS (classic)", readme)
         self.assertIn("monsters", readme)
+        self.assertIn("doors, lifts and moving floors", readme)
 
     def test_readme_is_english(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

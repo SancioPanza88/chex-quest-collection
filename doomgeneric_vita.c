@@ -11,6 +11,7 @@
 #include "doomtype.h"
 #include "g_game.h"
 #include "p_saveg.h"
+#include "r_defs.h"
 #include "i_sound.h"
 #include "m_argv.h"
 #include "s_sound.h"
@@ -24,6 +25,8 @@ extern void D_PostEvent(event_t *ev);
 extern void D_Display(void);
 extern void TryRunTics(void);
 extern thinker_t thinkercap;
+extern int numsectors;
+extern sector_t *sectors;
 void P_MobjThinker(mobj_t *mobj);
 #include "opl3.h"
 #include "launcher_art.h"
@@ -2426,10 +2429,42 @@ static void view_restore(void) {
  * stepping 35 times per second.                                        *
  * ------------------------------------------------------------------ */
 
+/* The engine only builds the thinker list while a level is up: P_SetupLevel
+   calls P_InitThinkers for it, and so does the savegame unarchive. Before
+   that - the title screen - and after a level is torn down, thinkercap is
+   still the zeroed global it starts as, so its next pointer is NULL and
+   walking the list would read address zero. */
+static thinker_t *thing_list(void) {
+  thinker_t *th;
+  if (gamestate != GS_LEVEL)
+    return NULL;
+  th = thinkercap.next;
+  if (th == NULL || th == &thinkercap)
+    return NULL;
+  return th;
+}
+
+/* The sectors of a level are only valid while one is loaded. */
+static int sectors_ready(void) {
+  return gamestate == GS_LEVEL && numsectors > 0 && sectors != NULL;
+}
+
+/* Nothing that moved further than this inside a single tic walked there: it
+   was spawned, teleported or the level was rebuilt. Drawing in between such
+   two positions would smear it across the map, so those are left alone. */
+#define INTERP_MAX_STEP (512 << FRACBITS)
+
+static int interp_near(fixed_t a, fixed_t b) {
+  int64_t delta = (int64_t)a - (int64_t)b;
+  if (delta < 0)
+    delta = -delta;
+  return delta <= (int64_t)INTERP_MAX_STEP;
+}
+
 static void things_snapshot(void) {
   thinker_t *th;
   int i, p;
-  for (th = thinkercap.next; th != &thinkercap; th = th->next) {
+  for (th = thing_list(); th != NULL && th != &thinkercap; th = th->next) {
     mobj_t *mo;
     if (th->function.acp1 != (actionf_p1)P_MobjThinker)
       continue;
@@ -2443,6 +2478,11 @@ static void things_snapshot(void) {
       players[p].psprites[i].prev_sx = players[p].psprites[i].sx;
       players[p].psprites[i].prev_sy = players[p].psprites[i].sy;
     }
+  if (sectors_ready())
+    for (i = 0; i < numsectors; ++i) {
+      sectors[i].prev_floorheight = sectors[i].floorheight;
+      sectors[i].prev_ceilingheight = sectors[i].ceilingheight;
+    }
 }
 
 /* Swaps every live value with the one from the previous tic and, while a
@@ -2453,7 +2493,7 @@ static void things_swap(int interpolate, uint32_t frac) {
   thinker_t *th;
   mobj_t *camera = players[displayplayer].mo;
   int i;
-  for (th = thinkercap.next; th != &thinkercap; th = th->next) {
+  for (th = thing_list(); th != NULL && th != &thinkercap; th = th->next) {
     mobj_t *mo;
     fixed_t swap;
     if (th->function.acp1 != (actionf_p1)P_MobjThinker)
@@ -2461,21 +2501,49 @@ static void things_swap(int interpolate, uint32_t frac) {
     mo = (mobj_t *)th;
     if (mo == camera)
       continue; /* the view itself is interpolated by view_apply() */
+    if (mo->x == mo->prev_x && mo->y == mo->prev_y && mo->z == mo->prev_z)
+      continue; /* it did not move: exchanging equal values changes nothing */
     swap = mo->x; mo->x = mo->prev_x; mo->prev_x = swap;
     swap = mo->y; mo->y = mo->prev_y; mo->prev_y = swap;
     swap = mo->z; mo->z = mo->prev_z; mo->prev_z = swap;
-    if (interpolate) {
+    if (interpolate && interp_near(mo->x, mo->prev_x) &&
+        interp_near(mo->y, mo->prev_y) && interp_near(mo->z, mo->prev_z)) {
       mo->x = lerp_fixed(mo->x, mo->prev_x, frac);
       mo->y = lerp_fixed(mo->y, mo->prev_y, frac);
       mo->z = lerp_fixed(mo->z, mo->prev_z, frac);
     }
   }
+  /* Sector heights: doors, lifts and moving floors. Nothing runs the
+     simulation between the two calls, so the renderer is the only reader. */
+  if (sectors_ready())
+    for (i = 0; i < numsectors; ++i) {
+      sector_t *sec = &sectors[i];
+      fixed_t swap;
+      if (sec->floorheight == sec->prev_floorheight &&
+          sec->ceilingheight == sec->prev_ceilingheight)
+        continue; /* most sectors never move, doors and lifts are the ones */
+      swap = sec->floorheight;
+      sec->floorheight = sec->prev_floorheight;
+      sec->prev_floorheight = swap;
+      swap = sec->ceilingheight;
+      sec->ceilingheight = sec->prev_ceilingheight;
+      sec->prev_ceilingheight = swap;
+      if (interpolate && interp_near(sec->floorheight, sec->prev_floorheight) &&
+          interp_near(sec->ceilingheight, sec->prev_ceilingheight)) {
+        sec->floorheight = lerp_fixed(sec->floorheight, sec->prev_floorheight, frac);
+        sec->ceilingheight =
+            lerp_fixed(sec->ceilingheight, sec->prev_ceilingheight, frac);
+      }
+    }
   for (i = 0; i < NUMPSPRITES; ++i) {
     pspdef_t *psp = &players[displayplayer].psprites[i];
     fixed_t swap;
+    if (psp->sx == psp->prev_sx && psp->sy == psp->prev_sy)
+      continue;
     swap = psp->sx; psp->sx = psp->prev_sx; psp->prev_sx = swap;
     swap = psp->sy; psp->sy = psp->prev_sy; psp->prev_sy = swap;
-    if (interpolate) {
+    if (interpolate && interp_near(psp->sx, psp->prev_sx) &&
+        interp_near(psp->sy, psp->prev_sy)) {
       psp->sx = lerp_fixed(psp->sx, psp->prev_sx, frac);
       psp->sy = lerp_fixed(psp->sy, psp->prev_sy, frac);
     }
@@ -2495,12 +2563,14 @@ static void game_loop_classic(void) {
 }
 
 static void game_loop_smooth(void) {
-  int last_tic;
+  int last_tic, interpolate;
   view_advance();
   last_tic = I_GetTime();
+  interpolate = 1;
   for (;;) {
     int now_tic = I_GetTime();
     if (now_tic != last_tic) {
+      int before = now_tic;
       last_tic = now_tic;
       /* Remember where everything was, then run the game tics without
          drawing: the frame that follows shows the state they produced,
@@ -2510,6 +2580,10 @@ static void game_loop_smooth(void) {
       TryRunTics();
       S_UpdateSounds(players[consoleplayer].mo);
       view_advance();
+      /* TryRunTics() catches up after a wipe or a hiccup and runs several tics
+         at once; there is no picture to show between those, so the frames of
+         this tic are drawn from the state the tics produced. */
+      interpolate = (I_GetTime() - before) <= 1;
     }
     if (!screenvisible) {
       sceKernelDelayThread(16000);
@@ -2517,11 +2591,15 @@ static void game_loop_smooth(void) {
     }
     {
       uint32_t frac = subtic_fraction();
-      view_apply(frac);
-      things_swap(1, frac);
+      if (interpolate) {
+        view_apply(frac);
+        things_swap(1, frac);
+      }
       D_Display();
-      things_swap(0, 0);
-      view_restore();
+      if (interpolate) {
+        things_swap(0, 0);
+        view_restore();
+      }
     }
   }
 }
