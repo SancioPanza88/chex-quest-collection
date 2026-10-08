@@ -11,7 +11,6 @@
 #include "doomtype.h"
 #include "g_game.h"
 #include "p_saveg.h"
-#include "r_defs.h"
 #include "i_sound.h"
 #include "m_argv.h"
 #include "s_sound.h"
@@ -25,9 +24,11 @@ extern void D_PostEvent(event_t *ev);
 extern void D_Display(void);
 extern void TryRunTics(void);
 extern thinker_t thinkercap;
-extern int numsectors;
-extern sector_t *sectors;
 void P_MobjThinker(mobj_t *mobj);
+/* The sector heights live in the engine, which owns the sector layout, so the
+   port only needs these two entry points (see p_setup.c). */
+void P_InterpSnapshotSectors(void);
+void P_InterpSwapSectors(int interpolate, int frac);
 #include "opl3.h"
 #include "launcher_art.h"
 #include "launcher_qr.h"
@@ -2444,11 +2445,6 @@ static thinker_t *thing_list(void) {
   return th;
 }
 
-/* The sectors of a level are only valid while one is loaded. */
-static int sectors_ready(void) {
-  return gamestate == GS_LEVEL && numsectors > 0 && sectors != NULL;
-}
-
 /* Nothing that moved further than this inside a single tic walked there: it
    was spawned, teleported or the level was rebuilt. Drawing in between such
    two positions would smear it across the map, so those are left alone. */
@@ -2478,11 +2474,7 @@ static void things_snapshot(void) {
       players[p].psprites[i].prev_sx = players[p].psprites[i].sx;
       players[p].psprites[i].prev_sy = players[p].psprites[i].sy;
     }
-  if (sectors_ready())
-    for (i = 0; i < numsectors; ++i) {
-      sectors[i].prev_floorheight = sectors[i].floorheight;
-      sectors[i].prev_ceilingheight = sectors[i].ceilingheight;
-    }
+  P_InterpSnapshotSectors();
 }
 
 /* Swaps every live value with the one from the previous tic and, while a
@@ -2515,26 +2507,7 @@ static void things_swap(int interpolate, uint32_t frac) {
   }
   /* Sector heights: doors, lifts and moving floors. Nothing runs the
      simulation between the two calls, so the renderer is the only reader. */
-  if (sectors_ready())
-    for (i = 0; i < numsectors; ++i) {
-      sector_t *sec = &sectors[i];
-      fixed_t swap;
-      if (sec->floorheight == sec->prev_floorheight &&
-          sec->ceilingheight == sec->prev_ceilingheight)
-        continue; /* most sectors never move, doors and lifts are the ones */
-      swap = sec->floorheight;
-      sec->floorheight = sec->prev_floorheight;
-      sec->prev_floorheight = swap;
-      swap = sec->ceilingheight;
-      sec->ceilingheight = sec->prev_ceilingheight;
-      sec->prev_ceilingheight = swap;
-      if (interpolate && interp_near(sec->floorheight, sec->prev_floorheight) &&
-          interp_near(sec->ceilingheight, sec->prev_ceilingheight)) {
-        sec->floorheight = lerp_fixed(sec->floorheight, sec->prev_floorheight, frac);
-        sec->ceilingheight =
-            lerp_fixed(sec->ceilingheight, sec->prev_ceilingheight, frac);
-      }
-    }
+  P_InterpSwapSectors(interpolate, (int)frac);
   for (i = 0; i < NUMPSPRITES; ++i) {
     pspdef_t *psp = &players[displayplayer].psprites[i];
     fixed_t swap;

@@ -296,6 +296,88 @@ void P_LoadSectors (int lump)
 
 
 //
+// Sector heights for the 60 frames per second mode
+//
+// [Vita] The port draws once per vsync, between two game tics, so a door, a lift
+// or a moving floor has to be drawn from the height it had at the previous tic
+// and the one it has now. The sector layout lives here, next to P_LoadSectors,
+// which is also where the previous height is initialised; the port only sees
+// the two prototypes below (including r_defs.h from the port does not work:
+// it pulls in i_video.h, whose globals clash with the ones the port defines).
+#define VITA_INTERP_MAX_STEP (512 << FRACBITS)
+
+static boolean vita_interp_near (fixed_t a, fixed_t b)
+{
+    long long delta = (long long)a - (long long)b;
+
+    if (delta < 0)
+	delta = -delta;
+
+    return delta <= (long long)VITA_INTERP_MAX_STEP;
+}
+
+// The sectors of a level are only valid while one is loaded.
+static boolean vita_sectors_ready (void)
+{
+    return gamestate == GS_LEVEL && numsectors > 0 && sectors != NULL;
+}
+
+void P_InterpSnapshotSectors (void)
+{
+    int i;
+
+    if (!vita_sectors_ready())
+	return;
+
+    for (i=0 ; i<numsectors ; ++i)
+    {
+	sectors[i].prev_floorheight = sectors[i].floorheight;
+	sectors[i].prev_ceilingheight = sectors[i].ceilingheight;
+    }
+}
+
+// Exchanges the live heights with the ones from the previous tic, leaving the
+// interpolated height in the live field while a frame is drawn. The second call
+// exchanges them back, so the simulation never sees an interpolated height.
+void P_InterpSwapSectors (int interpolate, int frac)
+{
+    int i;
+
+    if (!vita_sectors_ready())
+	return;
+
+    for (i=0 ; i<numsectors ; ++i)
+    {
+	sector_t *sec = &sectors[i];
+	fixed_t swap;
+
+	if (sec->floorheight == sec->prev_floorheight &&
+	    sec->ceilingheight == sec->prev_ceilingheight)
+	    continue;	// most sectors never move: doors and lifts are the ones
+
+	swap = sec->floorheight;
+	sec->floorheight = sec->prev_floorheight;
+	sec->prev_floorheight = swap;
+
+	swap = sec->ceilingheight;
+	sec->ceilingheight = sec->prev_ceilingheight;
+	sec->prev_ceilingheight = swap;
+
+	// A height that moved more than a tic of movement (a lift starting from a
+	// raised floor, a rebuilt level) is left where it is instead of smearing.
+	if (interpolate &&
+	    vita_interp_near(sec->floorheight, sec->prev_floorheight) &&
+	    vita_interp_near(sec->ceilingheight, sec->prev_ceilingheight))
+	{
+	    sec->floorheight +=
+		FixedMul(sec->prev_floorheight - sec->floorheight, frac);
+	    sec->ceilingheight +=
+		FixedMul(sec->prev_ceilingheight - sec->ceilingheight, frac);
+	}
+    }
+}
+
+//
 // P_LoadNodes
 //
 void P_LoadNodes (int lump)

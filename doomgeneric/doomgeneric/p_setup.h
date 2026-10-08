@@ -34,4 +34,9 @@ P_SetupLevel
 // Called by startup code.
 void P_Init (void);
 
+// [Vita] Sector heights for the 60 frames per second mode: the port snapshots
+// them once per game tic and exchanges them around the frame it draws.
+void P_InterpSnapshotSectors (void);
+void P_InterpSwapSectors (int interpolate, int frac);
+
 #endif

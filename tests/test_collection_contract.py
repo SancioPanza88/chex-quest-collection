@@ -106,9 +106,20 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn("prev_ceilingheight;", sector)
         setup = (ROOT / "doomgeneric/doomgeneric/p_setup.c").read_text(encoding="utf-8")
         self.assertIn("ss->prev_floorheight = ss->floorheight;", setup)
-        self.assertIn("sectors[i].prev_floorheight = sectors[i].floorheight;", source)
-        self.assertIn("sec->ceilingheight =", source)
-        self.assertIn("lerp_fixed(sec->ceilingheight, sec->prev_ceilingheight, frac)", source)
+        # The sector layout is engine side, so the port calls into p_setup.c.
+        self.assertIn("void P_InterpSnapshotSectors(void);", source)
+        self.assertIn("void P_InterpSwapSectors(int interpolate, int frac);", source)
+        self.assertIn("P_InterpSnapshotSectors();", source)
+        self.assertIn("P_InterpSwapSectors(interpolate, (int)frac);", source)
+        self.assertIn("sectors[i].prev_floorheight = sectors[i].floorheight;", setup)
+        self.assertIn("FixedMul(sec->prev_ceilingheight - sec->ceilingheight, frac)", setup)
+        self.assertIn(
+            "void P_InterpSwapSectors (int interpolate, int frac);",
+            (ROOT / "doomgeneric/doomgeneric/p_setup.h").read_text(encoding="utf-8"),
+        )
+        # r_defs.h cannot be included from the port: it pulls in i_video.h,
+        # whose globals clash with the ones the port defines.
+        self.assertNotIn('#include "r_defs.h"', source)
         # Spawns and loaded games start from a defined value instead of from
         # whatever the memory happened to contain.
         spawn = (ROOT / "doomgeneric/doomgeneric/p_mobj.c").read_text(encoding="utf-8")
@@ -127,13 +138,15 @@ class CollectionContractTests(unittest.TestCase):
         # it starts as, so a blind walk dereferenced address zero and crashed
         # the console as soon as a game ran at 60 fps.
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
-        self.assertIn('include "r_defs.h"', source)  # sector_t for the sectors
+        setup = (ROOT / "doomgeneric/doomgeneric/p_setup.c").read_text(encoding="utf-8")
         self.assertIn("static thinker_t *thing_list(void)", source)
         self.assertIn("if (th == NULL || th == &thinkercap)", source)
         self.assertIn("for (th = thing_list(); th != NULL && th != &thinkercap;", source)
         self.assertNotIn("for (th = thinkercap.next; th != &thinkercap", source)
-        self.assertIn("static int sectors_ready(void)", source)
-        self.assertIn("return gamestate == GS_LEVEL && numsectors > 0 && sectors != NULL;", source)
+        # Sector heights are guarded in the engine, where the sectors live.
+        self.assertIn("static boolean vita_sectors_ready (void)", setup)
+        self.assertIn("return gamestate == GS_LEVEL && numsectors > 0 && sectors != NULL;", setup)
+        self.assertIn("#define VITA_INTERP_MAX_STEP", setup)
         # A jump longer than one tic of movement is a teleport or a spawn: it is
         # drawn where it really is instead of being smeared across the map.
         self.assertIn("#define INTERP_MAX_STEP", source)
