@@ -31,6 +31,17 @@ failing the build.
 There is no local VitaSDK, so every build comes from CI. The contract tests in
 `tests/` run locally with `python -m unittest discover -s tests`.
 
+## Status
+
+| Item | State |
+| --- | --- |
+| 60 fps frame loop, interpolated view, cheaper upscaler | implemented on `v1.2-dev`, **needs a test on hardware** |
+| Framerate option (SELECT → OPTIONS, saved in `settings.cfg`) | implemented |
+| Cheats menu | not started |
+| Arena mode | not started |
+| Resolution experiment | not started |
+| Co-op prototype | not started |
+
 ## Requested features and verdicts
 
 | Feature | Verdict | Why |
@@ -104,6 +115,15 @@ Work in three stages, each one testable on its own:
 
 Ship it as an option (`Framerate: 35 / 60`) with the 35 fps path kept as a
 fallback, so a slow scene or a card without the option can fall back safely.
+
+Implemented on `v1.2-dev` as the three stages above: each source row is expanded
+once and copied into the screen rows that map onto it, the port owns the frame
+loop (`game_loop_smooth`), and the camera is interpolated between the previous
+and the current tic (`view_apply` / `view_restore`) with the loop drawing once
+per vsync. The framerate can be switched between 60 and 35 in the options
+screen. What is left is the measurement on a real console: if the software
+renderer cannot keep a frame inside the 16.6 ms vsync window in a busy scene,
+the 35 fps option is the fallback and the resolution stage gets postponed.
 
 Honest note for the release notes: game logic stays 35 Hz because that is the
 Doom fixed timestep; interpolation is what makes the image move smoothly.

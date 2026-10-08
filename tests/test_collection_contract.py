@@ -62,6 +62,37 @@ class CollectionContractTests(unittest.TestCase):
         for filename in ("assets/logo_chexquest1.png", "assets/logo_chexquest2.png", "assets/logo_chexquest3.png", "launcher.jfif"):
             self.assertTrue((ROOT / filename).is_file(), filename)
 
+    def test_frame_loop_interpolates_the_view_at_sixty(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        # The game is drawn once per vsync, from an interpolated camera ...
+        self.assertIn("static void game_loop_smooth(void)", source)
+        self.assertIn("view_apply(subtic_fraction());", source)
+        self.assertIn("view_restore();", source)
+        self.assertIn("D_Display();", source)
+        # ... while the original tic paced loop stays available as an option.
+        self.assertIn("static void game_loop_classic(void)", source)
+        self.assertIn("FPS_CLASSIC 35", source)
+        self.assertIn("FPS_SMOOTH 60", source)
+        self.assertNotIn("while (1) doomgeneric_Tick();", source)
+
+    def test_upscaler_expands_each_source_row_once(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        self.assertIn("static void blit_expand_row", source)
+        self.assertIn("memcpy(dst + y * VITA_W, blit_line, sizeof(blit_line));", source)
+        self.assertIn("int sy = blit_row_src[y];", source)
+        # the per pixel palette branch and the fixed point walk are gone
+        self.assertNotIn("if (launcher_frame) {", source)
+        self.assertNotIn("sx_f += step_x;", source)
+
+    def test_framerate_choice_is_saved_and_documented(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        self.assertIn('VITA_GAME_DATA_DIR "settings.cfg"', source)
+        self.assertIn('"framerate=%d\\n"', source)
+        self.assertIn("settings_load();", source)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("## Framerate", readme)
+        self.assertIn("35 FPS (classic)", readme)
+
     def test_readme_is_english(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("## PS Vita controls", readme)

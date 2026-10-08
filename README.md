@@ -2,7 +2,7 @@
 
 One Vita app for **Chex Quest 1**, **Chex Quest 2** and **Chex Quest 3: Vanilla Edition**. Pick a game in the launcher and press **Cross** or **START** to play it.
 
-The launcher is a proper menu now: it lists the three games plus a data-files row, shows at a glance which games are ready, plays menu music and blips, and can hand you the game data with a QR code if something is missing.
+The launcher is a proper menu now: it lists the three games plus a data-files row, shows at a glance which games are ready, plays menu music and blips, and can hand you the game data with a QR code if something is missing. Games run at **60 frames per second** with a smooth, interpolated view, and the old 35 fps pacing is still one press away in the options screen.
 
 ## Screenshots
 
@@ -14,9 +14,9 @@ The launcher is a proper menu now: it lists the three games plus a data-files ro
 |---|---|
 | ![Data files screen with QR code](docs/screenshots/data-qr.png) | ![Data screen reporting the missing files](docs/screenshots/data-missing.png) |
 
-| Controls | Return to launcher | Quick save |
+| Options and controls | Return to launcher | Quick save |
 |---|---|---|
-| ![Controls screen](docs/screenshots/controls.png) | ![Hold L, R and Select to return to the launcher](docs/screenshots/return-to-launcher.png) | ![Quick saved confirmation](docs/screenshots/quick-save.png) |
+| ![Options screen with the controls and the framerate setting](docs/screenshots/controls.png) | ![Hold L, R and Select to return to the launcher](docs/screenshots/return-to-launcher.png) | ![Quick saved confirmation](docs/screenshots/quick-save.png) |
 
 ## Download and install
 
@@ -77,6 +77,12 @@ Quick saves and loads confirm themselves with a short on-screen message ("QUICK 
 
 To leave a game and go back to the launcher, **hold L + R + SELECT for one second**: a progress bar fills up and the app reloads into the launcher.
 
+## Framerate
+
+Games draw at **60 fps** by default. The simulation still runs on Doom's fixed 35 Hz timestep, so the frame you see is interpolated between the last two tics: movement and turning are continuous instead of stepping 35 times per second, at the cost of the picture being one tic (about 28 ms) behind the input. If you would rather have the most direct feel, open the **OPTIONS** screen with **SELECT** in the launcher and switch to **35 FPS (classic)**, which draws exactly one frame per tic like the original engine.
+
+The choice is stored in `ux0:/data/chexquestcollection/settings.cfg` and applies the next time you start a game. The options screen also lists the full control mapping.
+
 ## Build
 
 Install VitaSDK, then run:
@@ -89,7 +95,7 @@ cmake --build build --parallel 1
 The contract tests check the launcher and data contracts against the sources:
 
 ```sh
-python -m unittest tests.test_collection_contract
+python -m unittest discover -s tests
 ```
 
 Game data and third-party trademarks/artwork remain the property of their respective owners; this project does not distribute WAD or DEH files.
