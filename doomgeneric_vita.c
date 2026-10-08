@@ -13,6 +13,7 @@
 #include "p_saveg.h"
 #include "i_sound.h"
 #include "m_argv.h"
+#include "s_sound.h"
 #include "sounds.h"
 #include "w_wad.h"
 #include "z_zone.h"
