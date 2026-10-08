@@ -10,11 +10,12 @@ tested here before they go to the public repo `SancioPanza88/chex-quest-collecti
 | `main` | mirror of the current public release (v1.1.0, commit `21316f1`). Keep it identical to the public repo so diffs stay readable. |
 | `v1.2-dev` | next-release work. |
 
-Release flow: develop on `v1.2-dev` → build VPK from the CI artifact → test on
-hardware → merge into `main` → push to `origin` (public) and tag the release there.
+Release flow: develop on `v1.2-dev` → grab the VPK from the CI pre-release →
+test on hardware → merge into `main` → push to `origin` (public) and tag the
+release there.
 
 The GitHub Actions workflow builds a VPK on every push. In this private repo the
-VDK to test is in the rolling pre-release:
+VPK to test is in the rolling pre-release:
 
 ```
 gh release download ci-latest -R SancioPanza88/chex-quest-collection-next -p "*.vpk"
