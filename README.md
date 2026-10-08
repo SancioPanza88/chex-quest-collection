@@ -16,7 +16,7 @@ The launcher is a proper menu now: it lists the three games plus a data-files ro
 
 | Options and controls | Return to launcher | Quick save |
 |---|---|---|
-| ![Options screen with the controls and the framerate setting](docs/screenshots/controls.png) | ![Hold L, R and Select to return to the launcher](docs/screenshots/return-to-launcher.png) | ![Quick saved confirmation](docs/screenshots/quick-save.png) |
+| ![Options screen: the control list with the boxed framerate and frame counter rows](docs/screenshots/options.png) | ![Hold L, R and Select to return to the launcher](docs/screenshots/return-to-launcher.png) | ![Quick saved confirmation](docs/screenshots/quick-save.png) |
 
 ## Download and install
 
@@ -79,9 +79,11 @@ To leave a game and go back to the launcher, **hold L + R + SELECT for one secon
 
 ## Framerate
 
+The picture is presented double buffered — two framebuffers exchanged at the vertical blank — so the frame being scanned out is never overwritten and turning the view does not tear the image.
+
 Games draw at **60 fps** by default. The simulation still runs on Doom's fixed 35 Hz timestep, so the frame you see is interpolated between the last two tics: movement and turning, monsters, projectiles, items, the weapon sway and the sector heights — **doors, lifts and moving floors** — are all continuous instead of stepping 35 times per second, at the cost of the picture being one tic (about 28 ms) behind the input. A jump longer than a single tic of movement, like a teleport or a spawn, is never interpolated, so nothing smears across the map. If you would rather have the most direct feel, open the **OPTIONS** screen with **SELECT** in the launcher and switch to **35 FPS (classic)**, which draws exactly one frame per tic like the original engine.
 
-The choice is stored in `ux0:/data/chexquestcollection/settings.cfg` and applies the next time you start a game. The options screen also lists the full control mapping.
+The **OPTIONS** screen (**SELECT** in the launcher) is a menu: **UP/DOWN** chooses a row, **X** or left/right changes its value. Its second row turns on a frame counter that shows the frames per second and the average frame time in the bottom left corner while you play. Both settings are stored in `ux0:/data/chexquestcollection/settings.cfg` and apply the next time you start a game; the screen also lists the full control mapping.
 
 ## Build
 
@@ -97,5 +99,9 @@ The contract tests check the launcher and data contracts against the sources:
 ```sh
 python -m unittest discover -s tests
 ```
+
+The screenshots above are rendered by `scripts/prepare_screenshots.py`, which reads
+the font, the colours and the coordinates back out of `doomgeneric_vita.c` and
+refuses to write a screen whose texts would overlap.
 
 Game data and third-party trademarks/artwork remain the property of their respective owners; this project does not distribute WAD or DEH files.

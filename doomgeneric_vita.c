@@ -66,8 +66,14 @@ int screenvisible = 1, screensaver_mode = 0, vanilla_keyboard_mapping = 0;
 int usegamma = 0, usemouse = 0, snd_musicdevice = 3; /* 3 = SB/OPL for music */
 int mouse_acceleration = 0, mouse_threshold = 0;
 
-static SceUID fb_memuid;
-static void *fb_base = NULL;
+/* Two framebuffers, exchanged at the vertical blank: the picture that is
+   being scanned out is never written to, which is what removes the torn
+   scanlines that appeared while turning the view. */
+#define FB_COUNT 2
+static SceUID fb_memuid[FB_COUNT] = { -1, -1 };
+static void *fb_buffers[FB_COUNT] = { NULL, NULL };
+static int fb_allocated = 0, fb_draw_index = 0;
+static void *fb_base = NULL; /* the buffer every screen draws into */
 static int display_ready = 0, frame_count = 0;
 static uint32_t cmap[256];
 
@@ -77,8 +83,13 @@ static uint32_t cmap[256];
 #define FPS_CLASSIC 35
 #define FPS_SMOOTH 60
 static int fps_target = FPS_SMOOTH;
+/* Counts the presented frames once per second and shows them in game. */
+static int fps_counter_on = 0;
+static uint32_t fps_window_start = 0;
+static int fps_window_frames = 0, fps_value = 0, fps_frame_ms_x10 = 0;
 static void settings_load(void);
 static void settings_save(void);
+static void fps_counter_tick(void);
 static int launcher_frame = 0;
 static const unsigned char *menu_music_data = NULL;
 static int menu_music_length = 0;
@@ -113,30 +124,50 @@ static void fatal_error(const char *message) {
 }
 
 static void init_display(void) {
-  int sz = (960 * 544 * 4 + 0xFFFFF) & ~0xFFFFF;
+  /* A size rounded up to a megabyte keeps the block usable by the display. */
+  const int sz = (VITA_W * VITA_H * 4 + 0xFFFFF) & ~0xFFFFF;
   SceDisplayFrameBuf fb;
-  int ret;
-  fb_memuid = sceKernelAllocMemBlock(
-      "framebuffer", SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW, sz, NULL);
-  if (fb_memuid < 0)
-    fb_memuid = sceKernelAllocMemBlock(
-        "framebuffer", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW, sz, NULL);
-  if (fb_memuid < 0) {
-    debug_logf("Alloc failed: 0x%08X", fb_memuid);
-    return;
+  int ret, i;
+
+  for (i = 0; i < FB_COUNT; ++i) {
+    SceUID uid = sceKernelAllocMemBlock(
+        "framebuffer", SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW, sz, NULL);
+    if (uid < 0)
+      uid = sceKernelAllocMemBlock(
+          "framebuffer", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW, sz, NULL);
+    if (uid < 0) {
+      debug_logf("framebuffer %d alloc failed: 0x%08X", i, uid);
+      break;
+    }
+    fb_memuid[i] = uid;
+    if (sceKernelGetMemBlockBase(uid, &fb_buffers[i]) < 0 || !fb_buffers[i]) {
+      debug_logf("framebuffer %d has no base", i);
+      break;
+    }
+    memset(fb_buffers[i], 0, sz);
+    fb_allocated = i + 1;
   }
-  sceKernelGetMemBlockBase(fb_memuid, &fb_base);
-  memset(fb_base, 0, sz);
+  if (fb_allocated == 0)
+    return; /* without a single buffer there is nothing to draw on */
+  debug_logf("framebuffers ready: %d", fb_allocated);
+
+  fb_draw_index = 0;
+  fb_base = fb_buffers[0];
   memset(&fb, 0, sizeof(fb));
   fb.size = sizeof(fb);
   fb.base = fb_base;
-  fb.pitch = 960;
+  fb.pitch = VITA_W;
   fb.pixelformat = SCE_DISPLAY_PIXELFORMAT_A8B8G8R8;
-  fb.width = 960;
-  fb.height = 544;
+  fb.width = VITA_W;
+  fb.height = VITA_H;
   ret = sceDisplaySetFrameBuf(&fb, SCE_DISPLAY_SETBUF_NEXTFRAME);
   debug_logf("SetFrameBuf: 0x%08X", ret);
   sceDisplayWaitVblankStart();
+  /* The buffer that is on screen now is off limits for drawing as well. */
+  if (fb_allocated > 1) {
+    fb_draw_index ^= 1;
+    fb_base = fb_buffers[fb_draw_index];
+  }
   display_ready = 1;
 }
 
@@ -477,12 +508,19 @@ static void ui_present(void)
     memset(&dfb, 0, sizeof(dfb));
     dfb.size = sizeof(dfb);
     dfb.base = fb_base;
-    dfb.pitch = 960;
+    dfb.pitch = VITA_W;
     dfb.pixelformat = SCE_DISPLAY_PIXELFORMAT_A8B8G8R8;
-    dfb.width = 960;
-    dfb.height = 544;
+    dfb.width = VITA_W;
+    dfb.height = VITA_H;
+    /* Hand the frame that was just drawn to the display: the exchange happens
+       at the next vertical blank, and from then on the other buffer is the one
+       being drawn into. */
     sceDisplaySetFrameBuf(&dfb, SCE_DISPLAY_SETBUF_NEXTFRAME);
     sceDisplayWaitVblankStart();
+    if (fb_allocated > 1) {
+        fb_draw_index ^= 1;
+        fb_base = fb_buffers[fb_draw_index];
+    }
 }
 
 static void ui_wait_for_press(void)
@@ -580,13 +618,83 @@ static void show_data_screen(int missing_game)
     ui_wait_for_press();
 }
 
-/* Shows the controls and the frame pacing setting. X (or left/right) changes
-   the framerate, START goes back to the launcher. */
+/* The options screen: a boxed selector for the settings plus the control
+   list. UP/DOWN chooses a row, X or left/right changes its value, START goes
+   back to the launcher. */
+#define OPT_ROWS 2
+#define OPT_ROW_X 48
+#define OPT_ROW_W 864
+#define OPT_ROW_H 34
+#define OPT_ROW_Y(row) (412 + (row) * (OPT_ROW_H + 8))
+
+static int options_selected = 0;
+
 static void show_options_screen(void);
+static void fps_counter_tick(void);
+static void options_value(int row, char *out, size_t size);
+
+/* Returns 1 when the setting actually changed. */
+static int options_toggle(int row)
+{
+    if (row == 0)
+        fps_target = (fps_target == FPS_SMOOTH) ? FPS_CLASSIC : FPS_SMOOTH;
+    else
+        fps_counter_on = !fps_counter_on;
+    return 1;
+}
+
+/* Left sets the smaller value, right the bigger one. */
+static int options_set(int row, int right)
+{
+    if (row == 0) {
+        int wanted = right ? FPS_SMOOTH : FPS_CLASSIC;
+        if (fps_target == wanted)
+            return 0;
+        fps_target = wanted;
+    } else {
+        if (fps_counter_on == (right != 0))
+            return 0;
+        fps_counter_on = right != 0;
+    }
+    return 1;
+}
+
+static void options_draw_row(int row)
+{
+    char value[64];
+    int y = OPT_ROW_Y(row);
+    int selected = (row == options_selected);
+    uint32_t border = selected ? UI_GOLD : UI_GOLD_DIM;
+
+    options_value(row, value, sizeof(value));
+    ui_rect(OPT_ROW_X, y, OPT_ROW_W, OPT_ROW_H, selected ? UI_PANEL : UI_BAR);
+    ui_rect(OPT_ROW_X, y, OPT_ROW_W, 2, border);
+    ui_rect(OPT_ROW_X, y + OPT_ROW_H - 2, OPT_ROW_W, 2, border);
+    ui_rect(OPT_ROW_X, y, 2, OPT_ROW_H, border);
+    ui_rect(OPT_ROW_X + OPT_ROW_W - 2, y, 2, OPT_ROW_H, border);
+    ui_text(OPT_ROW_X + 20, y + 10, row == 0 ? "FRAMERATE" : "FRAME COUNTER",
+            selected ? UI_WHITE : UI_TEXT, 2);
+    ui_text(OPT_ROW_X + 250, y + 10, value, selected ? UI_READY : UI_DIM, 2);
+    if (selected)
+        ui_text_right(OPT_ROW_X + OPT_ROW_W - 20, y + 10, "X: CHANGE",
+                      UI_GOLD_DIM, 2);
+}
+
+static void options_value(int row, char *out, size_t size)
+{
+    if (row == 0)
+        snprintf(out, size, "%d FPS  %s", fps_target,
+                 fps_target == FPS_SMOOTH ? "SMOOTH (INTERPOLATED)"
+                                          : "CLASSIC (ONE FRAME PER TIC)");
+    else
+        snprintf(out, size, "%s  %s", fps_counter_on ? "ON" : "OFF",
+                 fps_counter_on ? "SHOWS FPS AND FRAME TIME"
+                                : "KEEPS THE SCREEN CLEAN");
+}
 
 static void options_draw(void)
 {
-    char line[40];
+    int i;
     launcher_refresh_data();
     ui_rect(0, 0, VITA_W, VITA_H, UI_BG);
     ui_rect(0, 0, VITA_W, 64, UI_BAR);
@@ -620,22 +728,16 @@ static void options_draw(void)
     ui_text(520, 344, "HOLD L+R+SELECT", UI_TEXT, 2);
     ui_text(520, 368, "FOR ONE SECOND", UI_DIM, 2);
 
-    /* Frame pacing of the game itself. */
-    ui_text(48, 392, "PERFORMANCE", UI_GOLD, 2);
-    ui_rect(48, 418, 400, 2, UI_GOLD_DIM);
-    ui_text(48, 436, "FRAMERATE", UI_TEXT, 2);
-    snprintf(line, sizeof(line), "%d FPS", fps_target);
-    ui_text(48, 462, line, UI_WHITE, 2);
-    if (fps_target == FPS_SMOOTH)
-        ui_text(180, 462, "SMOOTH (INTERPOLATED)", UI_READY, 2);
-    else
-        ui_text(180, 462, "CLASSIC (ONE FRAME PER TIC)", UI_DIM, 2);
-    ui_text(520, 436, "CHANGES TAKE EFFECT", UI_DIM, 2);
-    ui_text(520, 462, "WHEN A GAME STARTS", UI_DIM, 2);
+    /* The settings of the game itself, each in its own box. */
+    ui_text(48, 386, "PERFORMANCE", UI_GOLD, 2);
+    ui_text_right(VITA_W - 48, 386, "FRAMERATE CHANGES WHEN A GAME STARTS",
+                  UI_DIM, 2);
+    for (i = 0; i < OPT_ROWS; ++i)
+        options_draw_row(i);
 
     ui_rect(0, 496, VITA_W, VITA_H - 496, UI_BAR);
     ui_rect(0, 494, VITA_W, 2, UI_GOLD_DIM);
-    ui_text(28, 514, "X OR LEFT/RIGHT: CHANGE", UI_WHITE, 2);
+    ui_text(28, 514, "UP/DOWN: CHOOSE   X OR LEFT/RIGHT: CHANGE", UI_WHITE, 2);
     ui_text_right(VITA_W - 28, 514, "START: GO BACK", UI_DIM, 2);
 
     ui_present();
@@ -644,9 +746,9 @@ static void options_draw(void)
 static void show_options_screen(void)
 {
     SceCtrlData pad, previous;
-    int changed;
+    int changed, redraw = 1;
 
-    options_draw();
+    options_selected = 0;
     sceCtrlPeekBufferPositive(0, &pad, 1);
     previous = pad; /* the button that opened the screen must not act at once */
     for (;;) {
@@ -654,21 +756,28 @@ static void show_options_screen(void)
         sceCtrlPeekBufferPositive(0, &pad, 1);
         if ((pad.buttons & SCE_CTRL_START) && !(previous.buttons & SCE_CTRL_START))
             return;
-        if ((pad.buttons & SCE_CTRL_CROSS) && !(previous.buttons & SCE_CTRL_CROSS)) {
-            fps_target = (fps_target == FPS_SMOOTH) ? FPS_CLASSIC : FPS_SMOOTH;
-            changed = 1;
+        if ((pad.buttons & SCE_CTRL_UP) && !(previous.buttons & SCE_CTRL_UP)) {
+            options_selected = (options_selected + OPT_ROWS - 1) % OPT_ROWS;
+            redraw = 1;
         }
-        if ((pad.buttons & SCE_CTRL_RIGHT) && !(previous.buttons & SCE_CTRL_RIGHT)) {
-            changed = fps_target != FPS_SMOOTH;
-            fps_target = FPS_SMOOTH;
+        if ((pad.buttons & SCE_CTRL_DOWN) && !(previous.buttons & SCE_CTRL_DOWN)) {
+            options_selected = (options_selected + 1) % OPT_ROWS;
+            redraw = 1;
         }
-        if ((pad.buttons & SCE_CTRL_LEFT) && !(previous.buttons & SCE_CTRL_LEFT)) {
-            changed = fps_target != FPS_CLASSIC;
-            fps_target = FPS_CLASSIC;
-        }
+        /* Cumulative: two buttons in the same frame must not lose a change. */
+        if ((pad.buttons & SCE_CTRL_CROSS) && !(previous.buttons & SCE_CTRL_CROSS))
+            changed |= options_toggle(options_selected);
+        if ((pad.buttons & SCE_CTRL_RIGHT) && !(previous.buttons & SCE_CTRL_RIGHT))
+            changed |= options_set(options_selected, 1);
+        if ((pad.buttons & SCE_CTRL_LEFT) && !(previous.buttons & SCE_CTRL_LEFT))
+            changed |= options_set(options_selected, 0);
         if (changed) {
             settings_save();
+            redraw = 1;
+        }
+        if (redraw) {
             options_draw();
+            redraw = 0;
         }
         previous = pad;
         sceKernelDelayThread(16000);
@@ -706,6 +815,32 @@ static void return_to_launcher(void)
     sceKernelExitProcess(0);
 }
 
+/* Frames the port really presented, measured over one second, plus the
+   average length of those frames. */
+static void fps_counter_tick(void)
+{
+    uint32_t now = get_ms();
+    if (!fps_counter_on) {
+        fps_window_start = 0;
+        fps_window_frames = 0;
+        fps_value = 0;
+        return;
+    }
+    if (!fps_window_start) {
+        fps_window_start = now;
+        fps_window_frames = 0;
+        return;
+    }
+    ++fps_window_frames;
+    if (now - fps_window_start >= 1000) {
+        int elapsed = (int)(now - fps_window_start);
+        fps_value = fps_window_frames * 1000 / elapsed;
+        fps_frame_ms_x10 = elapsed * 10 / fps_window_frames;
+        fps_window_start = now;
+        fps_window_frames = 0;
+    }
+}
+
 static void draw_game_overlays(void)
 {
     uint32_t now = get_ms();
@@ -730,6 +865,15 @@ static void draw_game_overlays(void)
         ui_text(x + 20, y + 12, "RETURN TO LAUNCHER", UI_WHITE, 2);
         ui_rect(x + 20, y + 40, w - 40, 12, UI_PANEL);
         ui_rect(x + 20, y + 40, (w - 40) * exit_hold_percent / 100, 12, UI_GOLD);
+    }
+    if (fps_counter_on && fps_value > 0) {
+        char line[40];
+        int w = 340, x = 20, y = VITA_H - 46;
+        snprintf(line, sizeof(line), "%d FPS  %d.%d MS", fps_value,
+                 fps_frame_ms_x10 / 10, fps_frame_ms_x10 % 10);
+        ui_rect(x, y, w, 34, UI_BLACK);
+        ui_rect(x, y, w, 2, UI_GOLD);
+        ui_text(x + 14, y + 9, line, UI_WHITE, 2);
     }
 }
 
@@ -2311,13 +2455,17 @@ static void settings_load(void) {
     if (fps == FPS_CLASSIC || fps == FPS_SMOOTH)
       fps_target = fps;
   }
-  debug_logf("settings: framerate=%d", fps_target);
+  value = strstr(buf, "counter=");
+  if (value)
+    fps_counter_on = atoi(value + 8) != 0;
+  debug_logf("settings: framerate=%d counter=%d", fps_target, fps_counter_on);
 }
 
 static void settings_save(void) {
-  char buf[64];
+  char buf[80];
   SceUID fd;
-  snprintf(buf, sizeof(buf), "framerate=%d\n", fps_target);
+  snprintf(buf, sizeof(buf), "framerate=%d\ncounter=%d\n", fps_target,
+           fps_counter_on);
   fd = sceIoOpen(SETTINGS_PATH, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
   if (fd < 0) {
     debug_log("settings: cannot write settings.cfg");
@@ -2325,7 +2473,8 @@ static void settings_save(void) {
   }
   sceIoWrite(fd, buf, (unsigned)strlen(buf));
   sceIoClose(fd);
-  debug_logf("settings: saved framerate=%d", fps_target);
+  debug_logf("settings: saved framerate=%d counter=%d", fps_target,
+             fps_counter_on);
 }
 
 /* ------------------------------------------------------------------ *
@@ -2531,8 +2680,10 @@ static uint32_t subtic_fraction(void) {
 }
 
 static void game_loop_classic(void) {
-  for (;;)
+  for (;;) {
     doomgeneric_Tick();
+    fps_counter_tick();
+  }
 }
 
 static void game_loop_smooth(void) {
@@ -2573,6 +2724,7 @@ static void game_loop_smooth(void) {
         things_swap(0, 0);
         view_restore();
       }
+      fps_counter_tick();
     }
   }
 }

@@ -263,6 +263,22 @@ Three more guards keep the interpolation harmless:
   frames that follow are drawn from the state those tics produced, with no
   interpolation in between.
 
+## Presentation: no more torn scanlines
+
+The port used a single framebuffer: the CPU wrote the next frame into the very
+buffer the display was scanning out, so turning the view produced jagged
+horizontal tears (the write and the scanout raced, which is also why they came
+and went). There are two framebuffers now, exchanged at the vertical blank in
+`ui_present()`, and every screen draws through the `fb_base` pointer, so the
+buffer on the display is never touched. If the second allocation ever fails the
+port keeps working with one buffer, exactly as before.
+
+The options screen is a menu instead of a line of text: two boxed rows
+(FRAMERATE, FRAME COUNTER), UP/DOWN to choose, X or left/right to change, and
+the selected row is highlighted with a gold border and a value box. The frame
+counter is measured once per second from the frames the port really presented,
+and it is stored in `settings.cfg` next to the framerate.
+
 ## Proposed v1.2 scope
 
 1. Cheats menu (launcher + in-game) — small, self-contained.

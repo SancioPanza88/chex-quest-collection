@@ -163,13 +163,78 @@ class CollectionContractTests(unittest.TestCase):
     def test_framerate_choice_is_saved_and_documented(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
         self.assertIn('VITA_GAME_DATA_DIR "settings.cfg"', source)
-        self.assertIn('"framerate=%d\\n"', source)
+        self.assertIn('"framerate=%d\\ncounter=%d\\n"', source)
+        self.assertIn('strstr(buf, "counter=")', source)
         self.assertIn("settings_load();", source)
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("## Framerate", readme)
         self.assertIn("35 FPS (classic)", readme)
         self.assertIn("monsters", readme)
         self.assertIn("doors, lifts and moving floors", readme)
+
+    def test_frames_go_out_double_buffered(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        # Two framebuffers exchanged at the vertical blank: the picture being
+        # scanned out is never written to, which is what stopped the torn
+        # scanlines that showed up while turning the view.
+        self.assertIn("#define FB_COUNT 2", source)
+        self.assertIn("static void *fb_buffers[FB_COUNT]", source)
+        self.assertIn("fb_allocated = i + 1;", source)
+        self.assertIn("if (fb_allocated > 1) {", source)
+        self.assertIn("fb_draw_index ^= 1;", source)
+        self.assertIn("fb_base = fb_buffers[fb_draw_index];", source)
+        self.assertIn("if (fb_allocated == 0)\n    return;", source)
+        # Both the startup path and ui_present() leave the displayed buffer
+        # alone: the buffer drawn into is always the other one.
+        self.assertEqual(source.count("fb_draw_index ^= 1;"), 2)
+        self.assertEqual(source.count("fb_base = fb_buffers[fb_draw_index];"), 2)
+        # ... and with a single buffer (allocation failed) nothing flips.
+        self.assertEqual(source.count("if (fb_allocated > 1) {"), 2)
+        # Every screen draws through fb_base, so they all follow the exchange:
+        # the two native helpers and the game blit each read it per call.
+        self.assertEqual(source.count("uint32_t *dst = (uint32_t *)fb_base;"), 2)
+        self.assertIn("dst = (uint32_t *)fb_base;", source)
+
+    def test_options_screen_selects_and_stores_both_settings(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        # A real menu: two boxed rows, UP/DOWN to choose, X or left/right to
+        # change the value of the selected row.
+        self.assertIn("#define OPT_ROWS 2", source)
+        self.assertIn("static int options_selected = 0;", source)
+        self.assertIn("options_selected = (options_selected + OPT_ROWS - 1) % OPT_ROWS;", source)
+        self.assertIn("options_selected = (options_selected + 1) % OPT_ROWS;", source)
+        # Two buttons in the same frame accumulate, so neither change is lost.
+        self.assertIn("changed |= options_toggle(options_selected);", source)
+        self.assertIn("changed |= options_set(options_selected, 1);", source)
+        self.assertIn("changed |= options_set(options_selected, 0);", source)
+        self.assertIn("changed = 0;", source)
+        self.assertIn("static void options_draw_row(int row)", source)
+        self.assertIn('"FRAME COUNTER"', source)
+        self.assertIn('"X: CHANGE"', source)
+        self.assertIn('"UP/DOWN: CHOOSE   X OR LEFT/RIGHT: CHANGE"', source)
+        # The frame counter is a setting as well, and it is measured.
+        self.assertIn("static void fps_counter_tick(void)", source)
+        self.assertIn('"%d FPS  %d.%d MS"', source)
+        self.assertIn("fps_counter_tick();", source)
+        self.assertIn("counter=%d", source)
+
+    def test_readme_options_screenshot_is_generated_from_the_port(self):
+        # The README shows the OPTIONS screen, and that image is not a
+        # hand-made mock-up: scripts/prepare_screenshots.py redraws it from the
+        # port's own font and coordinates, and refuses to write a screen whose
+        # texts would overlap.
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("docs/screenshots/options.png", readme)
+        self.assertNotIn("docs/screenshots/controls.png", readme)
+        self.assertTrue((ROOT / "docs/screenshots/options.png").is_file())
+        # The replaced screen must not linger as a second, stale image.
+        self.assertFalse((ROOT / "docs/screenshots/controls.png").exists())
+        generator = (ROOT / "scripts/prepare_screenshots.py").read_text(encoding="utf-8")
+        self.assertIn("menu_font", generator)
+        self.assertIn("def check_layout", generator)
+        self.assertIn("overlaps", generator)
+        self.assertIn('"OPTIONS"', generator)
+        self.assertIn('"FRAME COUNTER"', generator)
 
     def test_readme_is_english(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
