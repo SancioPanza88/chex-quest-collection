@@ -277,6 +277,13 @@ typedef struct mobj_s
     // Thing being chased/attacked for tracers.
     struct mobj_s*	tracer;	
     
+    // [Vita] Position at the previous tic. The picture is interpolated
+    // between this and the live position, so things move smoothly at 60
+    // frames per second. Never part of the savegame format.
+    fixed_t		prev_x;
+    fixed_t		prev_y;
+    fixed_t		prev_z;
+
 } mobj_t;
 
 

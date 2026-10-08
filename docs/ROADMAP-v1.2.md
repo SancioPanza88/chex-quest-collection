@@ -36,6 +36,7 @@ There is no local VitaSDK, so every build comes from CI. The contract tests in
 | Item | State |
 | --- | --- |
 | 60 fps frame loop, interpolated view, cheaper upscaler | implemented on `v1.2-dev`, **needs a test on hardware** |
+| Interpolation of things (monsters, projectiles, items) and of the weapon | implemented, **needs a test on hardware** |
 | Framerate option (SELECT → OPTIONS, saved in `settings.cfg`) | implemented |
 | Cheats menu | not started |
 | Arena mode | not started |
@@ -112,6 +113,13 @@ Work in three stages, each one testable on its own:
    mobile objects) and draw the interpolated position. This is what "60 fps
    smooth" actually means in modern Doom ports (DSDA-Doom, Doom Retro do exactly
    this) and what the player will feel.
+
+Things and the weapon are interpolated through a `prev_x/prev_y/prev_z` triple
+on `mobj_t` and a `prev_sx/prev_sy` pair on `pspdef_t`: the values are swapped
+with the live ones before the frame is drawn and swapped back right after, so
+the simulation only ever sees whole tics. The new fields are deliberately kept
+out of `saveg_*`, which means old savegames keep loading. Sector heights (doors,
+lifts, moving floors) are still drawn in 35 Hz steps — a possible next step.
 
 Ship it as an option (`Framerate: 35 / 60`) with the 35 fps path kept as a
 fallback, so a slow scene or a card without the option can fall back safely.

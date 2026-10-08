@@ -66,6 +66,11 @@ typedef struct
     fixed_t	sx;
     fixed_t	sy;
 
+    // [Vita] Weapon position at the previous tic, interpolated for the 60
+    // frames per second mode. Never part of the savegame format.
+    fixed_t	prev_sx;
+    fixed_t	prev_sy;
+
 } pspdef_t;
 
 #endif

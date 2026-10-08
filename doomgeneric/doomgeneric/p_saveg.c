@@ -765,6 +765,14 @@ static void saveg_read_player_t(player_t *str)
         saveg_read_pspdef_t(&str->psprites[i]);
     }
 
+    // [Vita] The weapon is interpolated from its previous tic position, which
+    // for a loaded game is the position that was just read back.
+    for (i=0; i<NUMPSPRITES; ++i)
+    {
+        str->psprites[i].prev_sx = str->psprites[i].sx;
+        str->psprites[i].prev_sy = str->psprites[i].sy;
+    }
+
     // boolean didsecret;
     str->didsecret = saveg_read32();
 }
@@ -1660,6 +1668,10 @@ void P_UnArchiveThinkers (void)
 	    mobj->floorz = mobj->subsector->sector->floorheight;
 	    mobj->ceilingz = mobj->subsector->sector->ceilingheight;
 	    mobj->thinker.function.acp1 = (actionf_p1)P_MobjThinker;
+	    // [Vita] Interpolation starts from the loaded position.
+	    mobj->prev_x = mobj->x;
+	    mobj->prev_y = mobj->y;
+	    mobj->prev_z = mobj->z;
 	    P_AddThinker (&mobj->thinker);
 	    break;
 

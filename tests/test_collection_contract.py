@@ -66,7 +66,8 @@ class CollectionContractTests(unittest.TestCase):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
         # The game is drawn once per vsync, from an interpolated camera ...
         self.assertIn("static void game_loop_smooth(void)", source)
-        self.assertIn("view_apply(subtic_fraction());", source)
+        self.assertIn("uint32_t frac = subtic_fraction();", source)
+        self.assertIn("view_apply(frac);", source)
         self.assertIn("view_restore();", source)
         self.assertIn("D_Display();", source)
         # ... while the original tic paced loop stays available as an option.
@@ -84,6 +85,30 @@ class CollectionContractTests(unittest.TestCase):
         self.assertNotIn("if (launcher_frame) {", source)
         self.assertNotIn("sx_f += step_x;", source)
 
+    def test_things_and_weapon_are_interpolated_too(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        self.assertIn("static void things_snapshot(void)", source)
+        self.assertIn("static void things_swap(int interpolate, uint32_t frac)", source)
+        self.assertIn("things_swap(1, frac);", source)
+        self.assertIn("things_swap(0, 0);", source)
+        # every thing carries the position of the previous tic ...
+        mobj = (ROOT / "doomgeneric/doomgeneric/p_mobj.h").read_text(encoding="utf-8")
+        for field in ("prev_x;", "prev_y;", "prev_z;"):
+            self.assertIn(field, mobj)
+        # ... and so does the weapon sprite.
+        pspr = (ROOT / "doomgeneric/doomgeneric/p_pspr.h").read_text(encoding="utf-8")
+        self.assertIn("prev_sx;", pspr)
+        self.assertIn("prev_sy;", pspr)
+        # Spawns and loaded games start from a defined value instead of from
+        # whatever the memory happened to contain.
+        spawn = (ROOT / "doomgeneric/doomgeneric/p_mobj.c").read_text(encoding="utf-8")
+        self.assertIn("mobj->prev_x = mobj->x;", spawn)
+        saveg = (ROOT / "doomgeneric/doomgeneric/p_saveg.c").read_text(encoding="utf-8")
+        self.assertIn("mobj->prev_x = mobj->x;", saveg)
+        self.assertIn("str->psprites[i].prev_sx = str->psprites[i].sx;", saveg)
+        # The savegame format itself must not change.
+        self.assertNotIn("prev_x", saveg.split("saveg_write_mobj_t")[1].split("}")[0])
+
     def test_framerate_choice_is_saved_and_documented(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
         self.assertIn('VITA_GAME_DATA_DIR "settings.cfg"', source)
@@ -92,6 +117,7 @@ class CollectionContractTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("## Framerate", readme)
         self.assertIn("35 FPS (classic)", readme)
+        self.assertIn("monsters", readme)
 
     def test_readme_is_english(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

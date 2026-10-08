@@ -19,9 +19,12 @@
 #include "z_zone.h"
 
 extern void D_PostEvent(event_t *ev);
-/* The engine keeps these internal in this tree; the Vita port drives the loop. */
+/* The engine keeps these internal in this tree; the Vita port drives the loop
+   and walks the thing list to interpolate the picture. */
 extern void D_Display(void);
 extern void TryRunTics(void);
+extern thinker_t thinkercap;
+void P_MobjThinker(mobj_t *mobj);
 #include "opl3.h"
 #include "launcher_art.h"
 #include "launcher_qr.h"
@@ -2413,6 +2416,72 @@ static void view_restore(void) {
   view_overridden = 0;
 }
 
+/* ------------------------------------------------------------------ *
+ * Interpolation of the things and of the weapon                      *
+ *                                                                     *
+ * A position only changes when a tic runs. The value from the previous *
+ * tic is kept in the mobj (and in the weapon sprite) itself, and the   *
+ * frames in between are drawn from the two of them, so monsters,       *
+ * projectiles, items and the weapon sway move continuously instead of  *
+ * stepping 35 times per second.                                        *
+ * ------------------------------------------------------------------ */
+
+static void things_snapshot(void) {
+  thinker_t *th;
+  int i, p;
+  for (th = thinkercap.next; th != &thinkercap; th = th->next) {
+    mobj_t *mo;
+    if (th->function.acp1 != (actionf_p1)P_MobjThinker)
+      continue;
+    mo = (mobj_t *)th;
+    mo->prev_x = mo->x;
+    mo->prev_y = mo->y;
+    mo->prev_z = mo->z;
+  }
+  for (p = 0; p < MAXPLAYERS; ++p)
+    for (i = 0; i < NUMPSPRITES; ++i) {
+      players[p].psprites[i].prev_sx = players[p].psprites[i].sx;
+      players[p].psprites[i].prev_sy = players[p].psprites[i].sy;
+    }
+}
+
+/* Swaps every live value with the one from the previous tic and, while a
+   frame is being drawn, keeps the interpolated value in the live field. The
+   second call swaps everything back, so the simulation never sees an
+   interpolated position. */
+static void things_swap(int interpolate, uint32_t frac) {
+  thinker_t *th;
+  mobj_t *camera = players[displayplayer].mo;
+  int i;
+  for (th = thinkercap.next; th != &thinkercap; th = th->next) {
+    mobj_t *mo;
+    fixed_t swap;
+    if (th->function.acp1 != (actionf_p1)P_MobjThinker)
+      continue;
+    mo = (mobj_t *)th;
+    if (mo == camera)
+      continue; /* the view itself is interpolated by view_apply() */
+    swap = mo->x; mo->x = mo->prev_x; mo->prev_x = swap;
+    swap = mo->y; mo->y = mo->prev_y; mo->prev_y = swap;
+    swap = mo->z; mo->z = mo->prev_z; mo->prev_z = swap;
+    if (interpolate) {
+      mo->x = lerp_fixed(mo->x, mo->prev_x, frac);
+      mo->y = lerp_fixed(mo->y, mo->prev_y, frac);
+      mo->z = lerp_fixed(mo->z, mo->prev_z, frac);
+    }
+  }
+  for (i = 0; i < NUMPSPRITES; ++i) {
+    pspdef_t *psp = &players[displayplayer].psprites[i];
+    fixed_t swap;
+    swap = psp->sx; psp->sx = psp->prev_sx; psp->prev_sx = swap;
+    swap = psp->sy; psp->sy = psp->prev_sy; psp->prev_sy = swap;
+    if (interpolate) {
+      psp->sx = lerp_fixed(psp->sx, psp->prev_sx, frac);
+      psp->sy = lerp_fixed(psp->sy, psp->prev_sy, frac);
+    }
+  }
+}
+
 /* How far the current tic has progressed, in 16.16 fixed point. */
 static uint32_t subtic_fraction(void) {
   uint64_t us = sceKernelGetProcessTimeLow();
@@ -2433,8 +2502,10 @@ static void game_loop_smooth(void) {
     int now_tic = I_GetTime();
     if (now_tic != last_tic) {
       last_tic = now_tic;
-      /* Run the game tics without drawing: the frame that follows shows the
-         state they produced, interpolated from the one before. */
+      /* Remember where everything was, then run the game tics without
+         drawing: the frame that follows shows the state they produced,
+         interpolated from the one before. */
+      things_snapshot();
       I_StartFrame();
       TryRunTics();
       S_UpdateSounds(players[consoleplayer].mo);
@@ -2444,9 +2515,14 @@ static void game_loop_smooth(void) {
       sceKernelDelayThread(16000);
       continue;
     }
-    view_apply(subtic_fraction());
-    D_Display();
-    view_restore();
+    {
+      uint32_t frac = subtic_fraction();
+      view_apply(frac);
+      things_swap(1, frac);
+      D_Display();
+      things_swap(0, 0);
+      view_restore();
+    }
   }
 }
 

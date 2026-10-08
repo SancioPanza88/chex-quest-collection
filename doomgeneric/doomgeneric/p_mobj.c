@@ -554,6 +554,12 @@ P_SpawnMobj
 
     mobj->thinker.function.acp1 = (actionf_p1)P_MobjThinker;
 	
+    // [Vita] The first frame after a spawn has nothing to interpolate from,
+    // so the previous position starts as the spawn position.
+    mobj->prev_x = mobj->x;
+    mobj->prev_y = mobj->y;
+    mobj->prev_z = mobj->z;
+
     P_AddThinker (&mobj->thinker);
 
     return mobj;
