@@ -64,6 +64,8 @@ static int menu_music_length = 0;
 static int menu_music_position = 0;
 static int menu_music_rate_phase = 0;
 static volatile int menu_music_active = 0;
+/* Defined with the SFX engine below; used by return_to_launcher(). */
+static volatile int sfx_running;
 static uint32_t base_time = 0;
 
 static uint32_t get_ms(void) { return sceKernelGetProcessTimeLow() / 1000; }
@@ -628,7 +630,7 @@ static void return_to_launcher(void)
     sceKernelDelayThread(100000);
     sceAppMgrLoadExec("app0:/eboot.bin", NULL, NULL);
     debug_log("sceAppMgrLoadExec failed; quitting");
-    sceKernelExitGame();
+    sceKernelExitProcess(0);
 }
 
 static void draw_game_overlays(void)
@@ -754,9 +756,9 @@ static void draw_launcher(int selected)
     }
 
     draw_menu_text(L_ROW_X + 2, L_FOOTER_Y + 4, "UP/DOWN: CHOOSE   X: LAUNCH", L_COL_TEXT);
-    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 4, "TRIANGLE: EXIT", L_COL_TEXT_DIM);
+    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 4, "TRIANGLE: EXIT", L_COL_TEXT_DIM, 1);
     draw_menu_text(L_ROW_X + 2, L_FOOTER_Y + 14, "SQUARE: DATA FILES", L_COL_GOLD_DIM);
-    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 14, "SELECT: CONTROLS", L_COL_TEXT_DIM);
+    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 14, "SELECT: CONTROLS", L_COL_TEXT_DIM, 1);
     I_FinishUpdate();
 }
 
