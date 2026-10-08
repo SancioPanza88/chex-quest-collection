@@ -13,8 +13,19 @@ tested here before they go to the public repo `SancioPanza88/chex-quest-collecti
 Release flow: develop on `v1.2-dev` → build VPK from the CI artifact → test on
 hardware → merge into `main` → push to `origin` (public) and tag the release there.
 
-The GitHub Actions workflow builds a VPK on every push. Grab it from
-**Actions → latest run → Artifacts → Chex-Quest-Collection-Vita**.
+The GitHub Actions workflow builds a VPK on every push. In this private repo the
+VDK to test is in the rolling pre-release:
+
+```
+gh release download ci-latest -R SancioPanza88/chex-quest-collection-next -p "*.vpk"
+```
+
+Artifacts are not usable here: GitHub meters artifact storage for private
+repositories, the account quota is currently full, and an upload attempt fails
+the step with "Artifact storage quota has been hit". That is why the workflow
+publishes the VPK as a release asset too (release assets do not count against
+the artifact quota) and why the artifact upload is allowed to fail without
+failing the build.
 
 There is no local VitaSDK, so every build comes from CI. The contract tests in
 `tests/` run locally with `python -m unittest discover -s tests`.
