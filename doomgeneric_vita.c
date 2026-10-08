@@ -19,8 +19,10 @@
 extern void D_PostEvent(event_t *ev);
 #include "opl3.h"
 #include "launcher_art.h"
+#include "launcher_qr.h"
 #include <stdint.h>
 #include <math.h>
+#include <psp2/appmgr.h>
 #include <psp2/apputil.h>
 #include <psp2/audioout.h>
 #include <psp2/ctrl.h>
@@ -139,40 +141,125 @@ static int save_directory_ready = 0;
 void I_InitGraphics(void);
 void I_FinishUpdate(void);
 
-static const char menu_glyphs[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-./<";
-static const unsigned char menu_font[][5] = {
-    {0x7e,0x11,0x11,0x11,0x7e},{0x7f,0x49,0x49,0x49,0x36},{0x3e,0x41,0x41,0x41,0x22},
-    {0x7f,0x41,0x41,0x22,0x1c},{0x7f,0x49,0x49,0x49,0x41},{0x7f,0x09,0x09,0x09,0x01},
-    {0x3e,0x41,0x49,0x49,0x7a},{0x7f,0x08,0x08,0x08,0x7f},{0x00,0x41,0x7f,0x41,0x00},
-    {0x20,0x40,0x41,0x3f,0x01},{0x7f,0x08,0x14,0x22,0x41},{0x7f,0x40,0x40,0x40,0x40},
-    {0x7f,0x02,0x0c,0x02,0x7f},{0x7f,0x04,0x08,0x10,0x7f},{0x3e,0x41,0x41,0x41,0x3e},
-    {0x7f,0x09,0x09,0x09,0x06},{0x3e,0x41,0x51,0x21,0x5e},{0x7f,0x09,0x19,0x29,0x46},
-    {0x46,0x49,0x49,0x49,0x31},{0x01,0x01,0x7f,0x01,0x01},{0x3f,0x40,0x40,0x40,0x3f},
-    {0x1f,0x20,0x40,0x20,0x1f},{0x3f,0x40,0x38,0x40,0x3f},{0x63,0x14,0x08,0x14,0x63},
-    {0x07,0x08,0x70,0x08,0x07},{0x61,0x51,0x49,0x45,0x43},{0x3e,0x45,0x49,0x51,0x3e},
-    {0x00,0x42,0x7f,0x40,0x00},{0x62,0x51,0x49,0x49,0x46},{0x22,0x41,0x49,0x49,0x36},
-    {0x18,0x14,0x12,0x7f,0x10},{0x2f,0x49,0x49,0x49,0x31},{0x3e,0x49,0x49,0x49,0x32},
-    {0x01,0x71,0x09,0x05,0x03},{0x36,0x49,0x49,0x49,0x36},{0x26,0x49,0x49,0x49,0x3e},
-    {0x00,0x36,0x36,0x00,0x00},{0x00,0x40,0x40,0x00,0x00},{0x00,0x60,0x60,0x00,0x00},
-    {0x60,0x10,0x08,0x04,0x03},{0x11,0x0a,0x04,0x00,0x00}
+static const char menu_glyphs[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-./<abcdefghijklmnopqrstuvwxyz>+";
+/* 5 columns x 9 rows per glyph; bit 0 is the top row, bit 6 the baseline. */
+#define MENU_FONT_ROWS 9
+static const unsigned short menu_font[][5] = {
+    {0x07e,0x011,0x011,0x011,0x07e}, /* A */
+    {0x07f,0x049,0x049,0x049,0x036}, /* B */
+    {0x03e,0x041,0x041,0x041,0x022}, /* C */
+    {0x07f,0x041,0x041,0x022,0x01c}, /* D */
+    {0x07f,0x049,0x049,0x049,0x041}, /* E */
+    {0x07f,0x009,0x009,0x009,0x001}, /* F */
+    {0x03e,0x041,0x049,0x049,0x07a}, /* G */
+    {0x07f,0x008,0x008,0x008,0x07f}, /* H */
+    {0x000,0x041,0x07f,0x041,0x000}, /* I */
+    {0x020,0x040,0x041,0x03f,0x001}, /* J */
+    {0x07f,0x008,0x014,0x022,0x041}, /* K */
+    {0x07f,0x040,0x040,0x040,0x040}, /* L */
+    {0x07f,0x002,0x00c,0x002,0x07f}, /* M */
+    {0x07f,0x004,0x008,0x010,0x07f}, /* N */
+    {0x03e,0x041,0x041,0x041,0x03e}, /* O */
+    {0x07f,0x009,0x009,0x009,0x006}, /* P */
+    {0x03e,0x041,0x051,0x021,0x05e}, /* Q */
+    {0x07f,0x009,0x019,0x029,0x046}, /* R */
+    {0x046,0x049,0x049,0x049,0x031}, /* S */
+    {0x001,0x001,0x07f,0x001,0x001}, /* T */
+    {0x03f,0x040,0x040,0x040,0x03f}, /* U */
+    {0x01f,0x020,0x040,0x020,0x01f}, /* V */
+    {0x03f,0x040,0x038,0x040,0x03f}, /* W */
+    {0x063,0x014,0x008,0x014,0x063}, /* X */
+    {0x007,0x008,0x070,0x008,0x007}, /* Y */
+    {0x061,0x051,0x049,0x045,0x043}, /* Z */
+    {0x03e,0x045,0x049,0x051,0x03e}, /* 0 */
+    {0x000,0x042,0x07f,0x040,0x000}, /* 1 */
+    {0x062,0x051,0x049,0x049,0x046}, /* 2 */
+    {0x022,0x041,0x049,0x049,0x036}, /* 3 */
+    {0x018,0x014,0x012,0x07f,0x010}, /* 4 */
+    {0x02f,0x049,0x049,0x049,0x031}, /* 5 */
+    {0x03e,0x049,0x049,0x049,0x032}, /* 6 */
+    {0x001,0x071,0x009,0x005,0x003}, /* 7 */
+    {0x036,0x049,0x049,0x049,0x036}, /* 8 */
+    {0x026,0x049,0x049,0x049,0x03e}, /* 9 */
+    {0x000,0x036,0x036,0x000,0x000}, /* : */
+    {0x000,0x040,0x040,0x000,0x000}, /* - */
+    {0x000,0x060,0x060,0x000,0x000}, /* . */
+    {0x060,0x010,0x008,0x004,0x003}, /* / */
+    {0x011,0x00a,0x004,0x000,0x000}, /* < */
+    {0x074,0x054,0x07c,0x078,0x000}, /* a */
+    {0x07f,0x044,0x064,0x03c,0x000}, /* b */
+    {0x078,0x044,0x044,0x044,0x000}, /* c */
+    {0x030,0x07c,0x044,0x064,0x07f}, /* d */
+    {0x010,0x07c,0x054,0x054,0x058}, /* e */
+    {0x008,0x008,0x07f,0x009,0x009}, /* f */
+    {0x080,0x1fc,0x154,0x15c,0x1cc}, /* g */
+    {0x07f,0x004,0x00c,0x078,0x000}, /* h */
+    {0x044,0x07d,0x07c,0x040,0x000}, /* i */
+    {0x104,0x104,0x1fd,0x000,0x000}, /* j */
+    {0x07f,0x018,0x06c,0x044,0x000}, /* k */
+    {0x041,0x07f,0x07f,0x040,0x000}, /* l */
+    {0x07c,0x00c,0x07c,0x00c,0x07c}, /* m */
+    {0x07c,0x004,0x00c,0x078,0x000}, /* n */
+    {0x030,0x07c,0x044,0x044,0x038}, /* o */
+    {0x1fc,0x044,0x064,0x03c,0x000}, /* p */
+    {0x030,0x07c,0x044,0x064,0x1fc}, /* q */
+    {0x07c,0x00c,0x004,0x00c,0x000}, /* r */
+    {0x05c,0x054,0x074,0x020,0x000}, /* s */
+    {0x004,0x004,0x07f,0x044,0x044}, /* t */
+    {0x07c,0x040,0x060,0x07c,0x000}, /* u */
+    {0x004,0x03c,0x060,0x070,0x00c}, /* v */
+    {0x03c,0x070,0x018,0x070,0x07c}, /* w */
+    {0x040,0x06c,0x018,0x038,0x044}, /* x */
+    {0x104,0x13c,0x0e0,0x070,0x00c}, /* y */
+    {0x064,0x074,0x04c,0x044,0x000}, /* z */
+    {0x042,0x024,0x018,0x018,0x000}, /* > */
+    {0x010,0x010,0x07c,0x010,0x010}, /* + */
 };
 
-static void draw_menu_text(int x, int y, const char *text, byte color)
+static void draw_menu_text_scaled(int x, int y, const char *text, byte color,
+                                  int scale)
 {
-    int n, col, row;
-    while (*text)
+    int n, col, row, px, py;
+    for (; *text; ++text)
     {
         int index = -1;
-        char ch = *text++;
+        char ch = *text;
         for (n = 0; n < (int)(sizeof(menu_glyphs) - 1); ++n)
             if (menu_glyphs[n] == ch) { index = n; break; }
         if (index >= 0)
             for (col = 0; col < 5; ++col)
-                for (row = 0; row < 7; ++row)
+                for (row = 0; row < MENU_FONT_ROWS; ++row)
                     if (menu_font[index][col] & (1u << row))
-                        I_VideoBuffer[(y + row) * SCREENWIDTH + x + col] = color;
-        x += 6;
+                        for (py = 0; py < scale; ++py)
+                            for (px = 0; px < scale; ++px)
+                            {
+                                int yy = y + row * scale + py;
+                                int xx = x + col * scale + px;
+                                if (xx >= 0 && xx < SCREENWIDTH &&
+                                    yy >= 0 && yy < SCREENHEIGHT)
+                                    I_VideoBuffer[yy * SCREENWIDTH + xx] = color;
+                            }
+        x += 6 * scale;
     }
+}
+
+static void draw_menu_text(int x, int y, const char *text, byte color)
+{
+    draw_menu_text_scaled(x, y, text, color, 1);
+}
+
+static int menu_text_width(const char *text, int scale)
+{
+    int n = (int)strlen(text);
+    return n > 0 ? (n * 6 - 1) * scale : 0;
+}
+
+static void draw_menu_text_right(int right, int y, const char *text, byte color,
+                                 int scale)
+{
+    draw_menu_text_scaled(right - menu_text_width(text, scale), y, text, color,
+                          scale);
 }
 
 static void launcher_rect(int x, int y, int w, int h, byte color)
@@ -202,45 +289,474 @@ static void launcher_logo_pixel(int x, int y, int width, int height,
     }
 }
 
+/* ------------------------------------------------------------------ *
+ * Launcher palette, layout and data-file bookkeeping                  *
+ * ------------------------------------------------------------------ */
+
+/* Launcher colours are RGB332 indices: launcher_rgb() unpacks them. */
+#define L_RGB(r, g, b) \
+    ((byte)((((r) >> 5) << 5) | (((g) >> 5) << 2) | ((b) >> 6)))
+#define L_COL_GOLD      L_RGB(255, 200, 72)
+#define L_COL_GOLD_DIM  L_RGB(170, 132, 48)
+#define L_COL_WHITE     L_RGB(255, 255, 255)
+#define L_COL_TEXT      L_RGB(214, 216, 232)
+#define L_COL_TEXT_DIM  L_RGB(140, 142, 160)
+#define L_COL_READY     L_RGB(104, 224, 128)
+#define L_COL_ALERT     L_RGB(236, 84, 72)
+#define L_COL_LINE      L_RGB(104, 110, 148)
+
+/* Geometry shared with scripts/prepare_launcher.py, which bakes the bands. */
+#define L_ROW_TOP 32
+#define L_ROW_H 33
+#define L_ROW_GAP 3
+#define L_ROW_X 6
+#define L_ROW_W 308
+#define L_FOOTER_Y 177
+#define L_ICON_SLOT 96
+#define L_ITEMS 4
+#define L_ITEM_DATA 3
+
+static int launcher_frame_tick = 0;
+static int launcher_data_mask = 0;
+
+/* Files the collection needs and the games that use them (bit = file index). */
+#define DATA_FILES 4
+static const char *const data_file_names[DATA_FILES] = {
+    "CHEX.WAD", "CHEX2.WAD", "chex3v.wad", "chex3.deh"
+};
+static const byte data_file_games[DATA_FILES] = { 0x03, 0x02, 0x04, 0x04 };
+
+static int data_file_present(const char *name)
+{
+    char path[128];
+    SceUID fd;
+    snprintf(path, sizeof(path), "%s%s", VITA_GAME_DATA_DIR, name);
+    fd = sceIoOpen(path, SCE_O_RDONLY, 0);
+    if (fd < 0)
+        return 0;
+    sceIoClose(fd);
+    return 1;
+}
+
+static void launcher_refresh_data(void)
+{
+    int i, mask = 0;
+    for (i = 0; i < DATA_FILES; ++i)
+        if (data_file_present(data_file_names[i]))
+            mask |= 1 << i;
+    launcher_data_mask = mask;
+}
+
+static byte game_required_mask(int game)
+{
+    byte mask = 0;
+    int i;
+    for (i = 0; i < DATA_FILES; ++i)
+        if (data_file_games[i] & (1 << game))
+            mask |= 1 << i;
+    return mask;
+}
+
+static int launcher_game_ready(int game)
+{
+    byte need = game_required_mask(game);
+    return (launcher_data_mask & need) == need;
+}
+
+static int launcher_ready_count(void)
+{
+    int i, count = 0;
+    for (i = 0; i < L_ITEM_DATA; ++i)
+        if (launcher_game_ready(i))
+            ++count;
+    return count;
+}
+
+/* ------------------------------------------------------------------ *
+ * Native 960x544 UI: overlays, the data/QR screen and the controls     *
+ * ------------------------------------------------------------------ */
+
+static uint32_t ui_rgb(int r, int g, int b)
+{
+    return 0xFF000000u | ((uint32_t)b << 16) | ((uint32_t)g << 8) | (uint32_t)r;
+}
+
+#define UI_BG ui_rgb(22, 26, 42)
+#define UI_PANEL ui_rgb(32, 38, 60)
+#define UI_BAR ui_rgb(12, 14, 24)
+#define UI_GOLD ui_rgb(255, 200, 72)
+#define UI_GOLD_DIM ui_rgb(170, 132, 48)
+#define UI_TEXT ui_rgb(226, 228, 240)
+#define UI_DIM ui_rgb(150, 154, 174)
+#define UI_READY ui_rgb(104, 224, 128)
+#define UI_ALERT ui_rgb(236, 84, 72)
+#define UI_WHITE ui_rgb(255, 255, 255)
+#define UI_BLACK ui_rgb(0, 0, 0)
+
+static void ui_rect(int x, int y, int w, int h, uint32_t color)
+{
+    uint32_t *dst = (uint32_t *)fb_base;
+    int row, col;
+    if (!dst || !display_ready)
+        return;
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > VITA_W) w = VITA_W - x;
+    if (y + h > VITA_H) h = VITA_H - y;
+    for (row = 0; row < h; ++row)
+        for (col = 0; col < w; ++col)
+            dst[(y + row) * VITA_W + x + col] = color;
+}
+
+static void ui_text(int x, int y, const char *text, uint32_t color, int scale)
+{
+    uint32_t *dst = (uint32_t *)fb_base;
+    if (!dst || !display_ready)
+        return;
+    for (; *text; ++text) {
+        int index = -1, n;
+        for (n = 0; n < (int)(sizeof(menu_glyphs) - 1); ++n)
+            if (menu_glyphs[n] == *text) { index = n; break; }
+        if (index >= 0) {
+            int col, row, px, py;
+            for (col = 0; col < 5; ++col)
+                for (row = 0; row < MENU_FONT_ROWS; ++row)
+                    if (menu_font[index][col] & (1u << row))
+                        for (py = 0; py < scale; ++py)
+                            for (px = 0; px < scale; ++px) {
+                                int xx = x + col * scale + px;
+                                int yy = y + row * scale + py;
+                                if (xx >= 0 && xx < VITA_W && yy >= 0 && yy < VITA_H)
+                                    dst[yy * VITA_W + xx] = color;
+                            }
+        }
+        x += 6 * scale;
+    }
+}
+
+static int ui_text_width(const char *text, int scale)
+{
+    int n = (int)strlen(text);
+    return n > 0 ? (n * 6 - 1) * scale : 0;
+}
+
+static void ui_text_right(int right, int y, const char *text, uint32_t color,
+                          int scale)
+{
+    ui_text(right - ui_text_width(text, scale), y, text, color, scale);
+}
+
+static void ui_present(void)
+{
+    SceDisplayFrameBuf dfb;
+    if (!display_ready || !fb_base)
+        return;
+    memset(&dfb, 0, sizeof(dfb));
+    dfb.size = sizeof(dfb);
+    dfb.base = fb_base;
+    dfb.pitch = 960;
+    dfb.pixelformat = SCE_DISPLAY_PIXELFORMAT_A8B8G8R8;
+    dfb.width = 960;
+    dfb.height = 544;
+    sceDisplaySetFrameBuf(&dfb, SCE_DISPLAY_SETBUF_NEXTFRAME);
+    sceDisplayWaitVblankStart();
+}
+
+static void ui_wait_for_press(void)
+{
+    SceCtrlData pad, previous;
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+    previous = pad; /* a button that opened the screen must not close it at once */
+    for (;;) {
+        sceCtrlPeekBufferPositive(0, &pad, 1);
+        if ((pad.buttons & (SCE_CTRL_CROSS | SCE_CTRL_START)) &&
+            !(previous.buttons & (SCE_CTRL_CROSS | SCE_CTRL_START)))
+            return;
+        previous = pad;
+        sceKernelDelayThread(16000);
+    }
+}
+
+/* QR code for the game-data download (see scripts/prepare_qr.py). */
+#define QR_MODULE 9
+
+static void draw_qr_card(int x, int y)
+{
+    int row, col;
+    ui_rect(x - 33, y - 33, (LAUNCHER_QR_MODULES * QR_MODULE) + 66,
+            (LAUNCHER_QR_MODULES * QR_MODULE) + 66, UI_WHITE);
+    for (row = 0; row < LAUNCHER_QR_MODULES; ++row)
+        for (col = 0; col < LAUNCHER_QR_MODULES; ++col)
+            if (launcher_qr_rows[row][col] == '#')
+                ui_rect(x + col * QR_MODULE, y + row * QR_MODULE, QR_MODULE,
+                        QR_MODULE, UI_BLACK);
+}
+
+static void data_screen_file(int x, int y, int index)
+{
+    int present = (launcher_data_mask >> index) & 1;
+    ui_text(x, y, data_file_names[index], present ? UI_READY : UI_ALERT, 2);
+}
+
+/* "missing_game" < 0 opens the plain download screen, otherwise it explains
+   which game is waiting for its files. */
+static void show_data_screen(int missing_game)
+{
+    char line[64];
+    const char *url =
+        "https://www.mediafire.com/file/dexl4gb4wbi0fmj/chexquestcollection.zip/file";
+    int x = 470, y = 286, i, present = 0;
+    SceCtrlData pad;
+
+    launcher_refresh_data();
+    ui_rect(0, 0, VITA_W, VITA_H, UI_BG);
+    ui_rect(0, 0, VITA_W, 64, UI_BAR);
+    ui_rect(0, 63, VITA_W, 2, UI_GOLD);
+    ui_text(28, 18, "GET THE GAME DATA", UI_GOLD, 3);
+    ui_text_right(VITA_W - 28, 26, "CHEX QUEST COLLECTION", UI_DIM, 2);
+
+    draw_qr_card(59, 121);
+
+    if (missing_game >= 0) {
+        snprintf(line, sizeof(line), "CHEX QUEST %d HAS NO DATA YET", missing_game + 1);
+        ui_text(x, 76, line, UI_ALERT, 2);
+        ui_text(x, 120, "SCAN THIS CODE", UI_GOLD, 3);
+    } else {
+        ui_text(x, 76, "SCAN THIS CODE", UI_GOLD, 3);
+    }
+    ui_text(x, 150, "WITH YOUR PHONE", UI_TEXT, 2);
+    ui_rect(x, 178, 460, 2, UI_GOLD_DIM);
+    ui_text(x, 194, "THEN COPY THE FILES", UI_TEXT, 2);
+    ui_text(x, 214, "TO THIS FOLDER:", UI_TEXT, 2);
+    ui_text(x, 240, "ux0:/data/", UI_GOLD, 2);
+    ui_text(x, 258, "chexquestcollection/", UI_GOLD, 2);
+
+    for (i = 0; i < DATA_FILES; ++i) {
+        if (i == 2) { x = 470; y += 30; }
+        data_screen_file(x, y, i);
+        x += ui_text_width(data_file_names[i], 2) + 28;
+        if ((launcher_data_mask >> i) & 1)
+            ++present;
+    }
+    snprintf(line, sizeof(line), "%d OF %d FILES ALREADY THERE", present, DATA_FILES);
+    ui_text(470, 352, line, present == DATA_FILES ? UI_READY : UI_ALERT, 2);
+
+    ui_text(470, 390, "OR TYPE THIS LINK:", UI_DIM, 2);
+    ui_text(470, 412, url, UI_TEXT, 1);
+
+    ui_rect(0, 496, VITA_W, VITA_H - 496, UI_BAR);
+    ui_rect(0, 494, VITA_W, 2, UI_GOLD_DIM);
+    ui_text(28, 514, "PRESS X TO GO BACK", UI_WHITE, 2);
+    ui_text_right(VITA_W - 28, 514, "FAN PROJECT - NO GAME DATA INCLUDED", UI_DIM, 2);
+
+    ui_present();
+
+    /* Wake the display up from a possible blank and swallow the current input. */
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+    (void)pad;
+    ui_wait_for_press();
+}
+
+static void show_controls_screen(void)
+{
+    launcher_refresh_data();
+    ui_rect(0, 0, VITA_W, VITA_H, UI_BG);
+    ui_rect(0, 0, VITA_W, 64, UI_BAR);
+    ui_rect(0, 63, VITA_W, 2, UI_GOLD);
+    ui_text(28, 18, "CONTROLS", UI_GOLD, 3);
+    ui_text_right(VITA_W - 28, 26, "CHEX QUEST COLLECTION", UI_DIM, 2);
+
+    ui_text(48, 96, "IN GAME", UI_GOLD, 2);
+    ui_rect(48, 122, 400, 2, UI_GOLD_DIM);
+    ui_text(48, 140, "LEFT STICK: MOVE", UI_TEXT, 2);
+    ui_text(48, 164, "RIGHT STICK: TURN", UI_TEXT, 2);
+    ui_text(48, 188, "X: USE", UI_TEXT, 2);
+    ui_text(48, 212, "SQUARE OR R: FIRE", UI_TEXT, 2);
+    ui_text(48, 236, "L: RUN", UI_TEXT, 2);
+    ui_text(48, 260, "TRIANGLE: AUTOMAP", UI_TEXT, 2);
+    ui_text(48, 284, "START: MENU", UI_TEXT, 2);
+    ui_text(48, 320, "UP: QUICK SAVE", UI_TEXT, 2);
+    ui_text(48, 344, "DOWN: QUICK LOAD", UI_TEXT, 2);
+    ui_text(48, 368, "LEFT/RIGHT: WEAPONS", UI_TEXT, 2);
+
+    ui_text(520, 96, "IN MENUS", UI_GOLD, 2);
+    ui_rect(520, 122, 400, 2, UI_GOLD_DIM);
+    ui_text(520, 140, "UP/DOWN: MOVE", UI_TEXT, 2);
+    ui_text(520, 164, "LEFT/RIGHT: CHANGE", UI_TEXT, 2);
+    ui_text(520, 188, "X: SELECT", UI_TEXT, 2);
+    ui_text(520, 212, "START: CLOSE", UI_TEXT, 2);
+    ui_text(520, 236, "SAVES AND LOADS", UI_DIM, 2);
+    ui_text(520, 260, "WORK IN GAME ONLY", UI_DIM, 2);
+
+    ui_text(520, 320, "BACK TO LAUNCHER", UI_GOLD, 2);
+    ui_text(520, 344, "HOLD L+R+SELECT", UI_TEXT, 2);
+    ui_text(520, 368, "FOR ONE SECOND", UI_DIM, 2);
+
+    ui_rect(0, 496, VITA_W, VITA_H - 496, UI_BAR);
+    ui_rect(0, 494, VITA_W, 2, UI_GOLD_DIM);
+    ui_text(28, 514, "PRESS X TO GO BACK", UI_WHITE, 2);
+
+    ui_present();
+    ui_wait_for_press();
+}
+
+/* ------------------------------------------------------------------ *
+ * In-game overlays: quick save/load feedback and the launcher shortcut *
+ * ------------------------------------------------------------------ */
+
+#define TOAST_MS 1600
+#define EXIT_HOLD_MS 1000
+
+static char toast_text[48] = "";
+static uint32_t toast_until = 0;
+static uint32_t exit_hold_start = 0;
+static int exit_hold_percent = 0;
+
+static void show_toast(const char *text)
+{
+    snprintf(toast_text, sizeof(toast_text), "%s", text);
+    toast_until = get_ms() + TOAST_MS;
+}
+
+/* The engine cannot restart in place, so the launcher comes back by reloading
+   the application. */
+static void return_to_launcher(void)
+{
+    debug_log("L+R+SELECT: reloading the launcher");
+    menu_music_active = 0;
+    sfx_running = 0;
+    sceKernelDelayThread(100000);
+    sceAppMgrLoadExec("app0:/eboot.bin", NULL, NULL);
+    debug_log("sceAppMgrLoadExec failed; quitting");
+    sceKernelExitGame();
+}
+
+static void draw_game_overlays(void)
+{
+    uint32_t now = get_ms();
+    if (toast_until) {
+        if (now < toast_until) {
+            int w = ui_text_width(toast_text, 2) + 48;
+            int x = (VITA_W - w) / 2, y = VITA_H - 104;
+            ui_rect(x + 4, y + 4, w, 44, UI_BLACK);
+            ui_rect(x, y, w, 44, UI_PANEL);
+            ui_rect(x, y, w, 2, UI_GOLD);
+            ui_rect(x, y + 42, w, 2, UI_GOLD);
+            ui_text(x + 24, y + 16, toast_text, UI_WHITE, 2);
+        } else {
+            toast_until = 0;
+        }
+    }
+    if (exit_hold_percent > 0) {
+        int w = 480, x = (VITA_W - w) / 2, y = 40;
+        ui_rect(x + 4, y + 4, w, 64, UI_BLACK);
+        ui_rect(x, y, w, 64, UI_PANEL);
+        ui_rect(x, y, w, 2, UI_GOLD);
+        ui_text(x + 20, y + 12, "RETURN TO LAUNCHER", UI_WHITE, 2);
+        ui_rect(x + 20, y + 40, w - 40, 12, UI_PANEL);
+        ui_rect(x + 20, y + 40, (w - 40) * exit_hold_percent / 100, 12, UI_GOLD);
+    }
+}
+
+/* ------------------------------------------------------------------ *
+ * Launcher screen (320x200 indexed buffer)                            *
+ * ------------------------------------------------------------------ */
+
+static const char *const launcher_titles[L_ITEMS] = {
+    "CHEX QUEST 1", "CHEX QUEST 2", "CHEX QUEST 3", "DATA FILES"
+};
+
+static void launcher_border(int x, int y, int w, int h, byte color)
+{
+    launcher_rect(x, y, w, 1, color);
+    launcher_rect(x, y + h - 1, w, 1, color);
+    launcher_rect(x, y, 1, h, color);
+    launcher_rect(x + w - 1, y, 1, h, color);
+}
+
+static void launcher_qr_badge(int x, int y, byte color)
+{
+    static const char *const badge[13] = {
+        "#######...#..", "#.....#..#...", "#.###.#.#....", "#.###.#..#...",
+        "#.###.#....#.", "#.....#..#...", "#######.#....", "..........#..",
+        "#..#..#......", "..#..##.#....", "...#.....#...", "..#..#..#....",
+        "#....#....#.."
+    };
+    int row, col, px, py;
+    for (row = 0; row < 13; ++row)
+        for (col = 0; col < 13; ++col)
+            if (badge[row][col] == '#')
+                for (py = 0; py < 2; ++py)
+                    for (px = 0; px < 2; ++px) {
+                        int xx = x + col * 2 + px;
+                        int yy = y + row * 2 + py;
+                        if (xx >= 0 && xx < SCREENWIDTH && yy >= 0 && yy < SCREENHEIGHT)
+                            I_VideoBuffer[yy * SCREENWIDTH + xx] = color;
+                    }
+}
+
 static void draw_launcher(int selected)
 {
-    static const char *names[] = { "CHEX QUEST 1", "CHEX QUEST 2", "CHEX QUEST 3" };
-    static const unsigned char *logos[] = {
+    static const unsigned char *logos[3] = {
         (const unsigned char *)launcher_logo_cq1,
         (const unsigned char *)launcher_logo_cq2,
         (const unsigned char *)launcher_logo_cq3
     };
-    static const int logo_w[] = { LAUNCHER_LOGO_CQ1_W, LAUNCHER_LOGO_CQ2_W, LAUNCHER_LOGO_CQ3_W };
-    static const int logo_h[] = { LAUNCHER_LOGO_CQ1_H, LAUNCHER_LOGO_CQ2_H, LAUNCHER_LOGO_CQ3_H };
-    int i, top;
+    static const int logo_w[3] = { LAUNCHER_LOGO_CQ1_W, LAUNCHER_LOGO_CQ2_W, LAUNCHER_LOGO_CQ3_W };
+    static const int logo_h[3] = { LAUNCHER_LOGO_CQ1_H, LAUNCHER_LOGO_CQ2_H, LAUNCHER_LOGO_CQ3_H };
+    /* The selection breathes so the highlighted row is obvious at a glance. */
+    byte accent = ((launcher_frame_tick / 12) % 3 == 1) ? L_COL_GOLD_DIM : L_COL_GOLD;
+    char line[32];
+    int i, title_x = L_ROW_X + 8 + L_ICON_SLOT + 10;
+
     launcher_frame = 1;
     memcpy(I_VideoBuffer, launcher_bg, SCREENWIDTH * SCREENHEIGHT);
 
-    /* Header, three horizontal game tiles, and a high-contrast white selection. */
-    launcher_rect(0, 0, SCREENWIDTH, 31, 12);
-    launcher_rect(0, 30, SCREENWIDTH, 1, 250);
-    draw_menu_text(12, 8, "CHEX QUEST COLLECTION", 255);
-    draw_menu_text(234, 8, "SELECT A GAME", 224);
+    /* Header: big collection title and how many games are ready to play. */
+    draw_menu_text_scaled(10, 6, "CHEX QUEST", L_COL_GOLD, 2);
+    draw_menu_text(140, 12, "COLLECTION", L_COL_WHITE);
+    snprintf(line, sizeof(line), "READY %d/3", launcher_ready_count());
+    draw_menu_text_right(SCREENWIDTH - 10, 12, line,
+                         launcher_ready_count() == 3 ? L_COL_READY : L_COL_ALERT, 1);
 
-    for (i = 0; i < 3; ++i) {
-        top = 43 + i * 43;
+    for (i = 0; i < L_ITEMS; ++i) {
+        int top = L_ROW_TOP + i * (L_ROW_H + L_ROW_GAP);
+        int is_data = (i == L_ITEM_DATA);
+        int ready = is_data || launcher_game_ready(i);
+        const char *status;
+        byte status_col, title_col;
+
         if (i == selected) {
-            launcher_rect(8, top - 3, 304, 39, 255);
-            launcher_rect(10, top - 1, 300, 35, 18);
+            launcher_border(L_ROW_X - 1, top - 1, L_ROW_W + 2, L_ROW_H + 2, L_COL_GOLD_DIM);
+            launcher_border(L_ROW_X, top, L_ROW_W, L_ROW_H, accent);
+            launcher_rect(L_ROW_X, top, 4, L_ROW_H, accent);
+            title_col = L_COL_WHITE;
         } else {
-            launcher_rect(8, top - 3, 304, 39, 96);
-            launcher_rect(10, top - 1, 300, 35, 12);
+            launcher_border(L_ROW_X, top, L_ROW_W, L_ROW_H, L_COL_LINE);
+            title_col = L_COL_TEXT;
         }
-        launcher_logo_pixel(18, top + 1, logo_w[i], logo_h[i], logos[i]);
-        draw_menu_text(119, top + 12, names[i], i == selected ? 255 : 248);
-        if (i == selected) {
-            draw_menu_text(290, top + 10, "<", 255);
+
+        if (is_data) {
+            launcher_qr_badge(L_ROW_X + 8 + (L_ICON_SLOT - 26) / 2,
+                              top + (L_ROW_H - 26) / 2,
+                              i == selected ? L_COL_GOLD : L_COL_TEXT_DIM);
+            status = "QR CODE";
+            status_col = i == selected ? L_COL_GOLD : L_COL_GOLD_DIM;
+        } else {
+            launcher_logo_pixel(L_ROW_X + 8 + (L_ICON_SLOT - logo_w[i]) / 2,
+                                top + (L_ROW_H - logo_h[i]) / 2, logo_w[i],
+                                logo_h[i], logos[i]);
+            status = ready ? "READY" : "MISSING";
+            status_col = ready ? L_COL_READY : L_COL_ALERT;
         }
+        draw_menu_text_scaled(title_x, top + 7, launcher_titles[i], title_col, 2);
+        draw_menu_text_right(L_ROW_X + L_ROW_W - 8, top + 13, status, status_col, 1);
     }
 
-    launcher_rect(0, 174, SCREENWIDTH, 26, 12);
-    draw_menu_text(9, 178, "LEFT/RIGHT OR UP/DOWN: CHOOSE", 255);
-    draw_menu_text(9, 189, "X / START: LAUNCH     TRIANGLE: EXIT", 232);
+    draw_menu_text(L_ROW_X + 2, L_FOOTER_Y + 4, "UP/DOWN: CHOOSE   X: LAUNCH", L_COL_TEXT);
+    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 4, "TRIANGLE: EXIT", L_COL_TEXT_DIM);
+    draw_menu_text(L_ROW_X + 2, L_FOOTER_Y + 14, "SQUARE: DATA FILES", L_COL_GOLD_DIM);
+    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 14, "SELECT: CONTROLS", L_COL_TEXT_DIM);
     I_FinishUpdate();
 }
 
@@ -251,6 +767,15 @@ static void kq_push(int p, unsigned char k) {
   kq[kq_w].pressed = p;
   kq[kq_w].key = k;
   kq_w = n;
+}
+
+/* While a menu, the intermission or the title screen is up the D-pad becomes
+   arrow keys, so it scrolls the menus instead of saving or cycling weapons. */
+static void dpad_arrow(int now, int was, unsigned char key) {
+  if (now && !was)
+    kq_push(1, key);
+  if (!now && was)
+    kq_push(0, key);
 }
 static void analog_axis(int val, int nk, int pk, int *nh, int *ph) {
   int wn = val<-DEADZONE, wp = val> DEADZONE;
@@ -335,41 +860,53 @@ static void do_poll_input(void) {
     pending_weapon_release = 0;
   }
 
-  /* D-pad Up quicksaves; Down quickloads; Left/Right cycle weapons. */
+  /* D-pad Up quicksaves; Down quickloads; Left/Right cycle weapons, but only
+     while playing: menus, the intermission and the pause screen scroll. */
   {
     int up = (pad.buttons & SCE_CTRL_UP) != 0;
     int down = (pad.buttons & SCE_CTRL_DOWN) != 0;
     int up_was = (pad_prev.buttons & SCE_CTRL_UP) != 0;
     int down_was = (pad_prev.buttons & SCE_CTRL_DOWN) != 0;
+    int l = (pad.buttons & SCE_CTRL_LEFT) != 0;
+    int r = (pad.buttons & SCE_CTRL_RIGHT) != 0;
+    int lw = (pad_prev.buttons & SCE_CTRL_LEFT) != 0;
+    int rw = (pad_prev.buttons & SCE_CTRL_RIGHT) != 0;
+    int menu_focus = (gamestate != GS_LEVEL) || !usergame || menuactive;
+    int can_weapon = 0;
+
     if (quicksave_cooldown > 0) quicksave_cooldown--;
     if (quickload_cooldown > 0) quickload_cooldown--;
-    if (up && !up_was && quicksave_cooldown == 0) {
-      if (gamestate == GS_LEVEL && usergame) {
+
+    if (menu_focus) {
+      dpad_arrow(up, up_was, KEY_UPARROW);
+      dpad_arrow(down, down_was, KEY_DOWNARROW);
+      dpad_arrow(l, lw, KEY_LEFTARROW);
+      dpad_arrow(r, rw, KEY_RIGHTARROW);
+      weapon_l_charge = 0;
+      weapon_r_charge = 0;
+    } else {
+      if (up && !up_was && quicksave_cooldown == 0) {
         G_SaveGame(0, "VITA SAVE");
         debug_logf("Quicksave slot 0, dir=%s", savegamedir ? savegamedir : "(null)");
-      } else {
-        debug_log("Quicksave ignored outside an active level");
+        show_toast("QUICK SAVED");
+        quicksave_cooldown = TICRATE;
       }
-      quicksave_cooldown = TICRATE;
-    }
-    if (down && !down_was && quickload_cooldown == 0) {
-      char *path = P_SaveGameFile(0);
-      FILE *save_file = path ? fopen(path, "rb") : NULL;
-      if (save_file) {
-        fclose(save_file);
-        G_LoadGame(path);
-        debug_logf("Quickload: %s", path);
-      } else {
-        debug_log("Quickload ignored: no save file");
+      if (down && !down_was && quickload_cooldown == 0) {
+        char *path = P_SaveGameFile(0);
+        FILE *save_file = path ? fopen(path, "rb") : NULL;
+        if (save_file) {
+          fclose(save_file);
+          G_LoadGame(path);
+          debug_logf("Quickload: %s", path);
+          show_toast("QUICK LOADED");
+        } else {
+          debug_log("Quickload ignored: no save file");
+          show_toast("NO QUICK SAVE YET");
+        }
+        quickload_cooldown = TICRATE;
       }
-      quickload_cooldown = TICRATE;
+      can_weapon = weapon_cycle_cooldown == 0;
     }
-    int l = (pad.buttons & SCE_CTRL_LEFT) != 0;
-    int lw = (pad_prev.buttons & SCE_CTRL_LEFT) != 0;
-    int r = (pad.buttons & SCE_CTRL_RIGHT) != 0;
-    int rw = (pad_prev.buttons & SCE_CTRL_RIGHT) != 0;
-
-    int can_weapon = weapon_cycle_cooldown == 0;
 
     if (!r) {
       weapon_r_charge = 0;
@@ -436,6 +973,23 @@ static void do_poll_input(void) {
       weapon_touch_prev_in_bar = 1;
     } else {
       weapon_touch_prev_in_bar = 0;
+    }
+  }
+
+  /* L+R+SELECT held for a moment: leave the game and reload the launcher. */
+  {
+    const unsigned int exit_combo =
+        SCE_CTRL_LTRIGGER | SCE_CTRL_RTRIGGER | SCE_CTRL_SELECT;
+    if ((pad.buttons & exit_combo) == exit_combo) {
+      uint32_t now = get_ms();
+      if (!exit_hold_start)
+        exit_hold_start = now;
+      exit_hold_percent = (int)((now - exit_hold_start) * 100 / EXIT_HOLD_MS);
+      if (exit_hold_percent >= 100)
+        return_to_launcher();
+    } else if (exit_hold_start) {
+      exit_hold_start = 0;
+      exit_hold_percent = 0;
     }
   }
   pad_prev = pad;
@@ -946,6 +1500,15 @@ static void mix_into(int16_t *out, int nsamples) {
   }
 }
 
+/* Short blip used by the launcher when the selection moves. */
+static volatile int menu_beep_frames = 0;
+static int menu_beep_phase = 0;
+
+static void launcher_play_beep(void) {
+  menu_beep_frames = OUTPUT_RATE / 24;
+  menu_beep_phase = 0;
+}
+
 static int sfx_thread_func(SceSize args, void *argp) {
   (void)args;
   (void)argp;
@@ -953,6 +1516,20 @@ static int sfx_thread_func(SceSize args, void *argp) {
     int16_t *buf = sfx_buf[sfx_buf_idx];
     int sample;
     mix_into(buf, AUDIO_GRANULARITY);
+    if (menu_beep_frames > 0) {
+      for (sample = 0; sample < AUDIO_GRANULARITY && menu_beep_frames > 0;
+           ++sample, --menu_beep_frames) {
+        int32_t tone = ((menu_beep_phase++ / 34) & 1) ? 7000 : -7000;
+        int32_t left = (int32_t)buf[sample * 2] + tone;
+        int32_t right = (int32_t)buf[sample * 2 + 1] + tone;
+        if (left > 32767) left = 32767;
+        if (left < -32768) left = -32768;
+        if (right > 32767) right = 32767;
+        if (right < -32768) right = -32768;
+        buf[sample * 2] = (int16_t)left;
+        buf[sample * 2 + 1] = (int16_t)right;
+      }
+    }
     if (menu_music_active && menu_music_data && menu_music_length > 0) {
       for (sample = 0; sample < AUDIO_GRANULARITY; ++sample) {
         int16_t music_sample = ((int)menu_music_data[menu_music_position] - 128) * 256;
@@ -1208,18 +1785,10 @@ void I_FinishUpdate(void) {
     }
     sy_f += step_y;
   }
-  {
-    SceDisplayFrameBuf dfb;
-    memset(&dfb, 0, sizeof(dfb));
-    dfb.size = sizeof(dfb);
-    dfb.base = fb_base;
-    dfb.pitch = 960;
-    dfb.pixelformat = SCE_DISPLAY_PIXELFORMAT_A8B8G8R8;
-    dfb.width = 960;
-    dfb.height = 544;
-    sceDisplaySetFrameBuf(&dfb, SCE_DISPLAY_SETBUF_NEXTFRAME);
-  }
-  sceDisplayWaitVblankStart();
+  /* The launcher draws its own screens; only the game gets overlays. */
+  if (!launcher_frame)
+    draw_game_overlays();
+  ui_present();
   frame_count++;
 }
 void I_ShutdownGraphics(void) {}
@@ -1667,18 +2236,65 @@ int main(int argc, char **argv) {
       debug_log("Menu music unavailable; continuing silently");
     }
   }
+  /* The launcher blips need audio even when the soundtrack is missing. */
+  start_audio_system();
 
   {
     SceCtrlData previous, pad;
+    uint32_t last_draw = 0, last_status = 0;
+    int needs_draw = 1;
     memset(&previous, 0, sizeof(previous));
+    launcher_refresh_data();
+    /* Without game data the download screen is the useful first stop. */
+    if (launcher_ready_count() == 0)
+      selected = L_ITEM_DATA;
     for (;;) {
+      uint32_t now = get_ms();
       sceCtrlPeekBufferPositive(0, &pad, 1);
-      if ((pad.buttons & SCE_CTRL_LEFT) && !(previous.buttons & SCE_CTRL_LEFT)) { selected = (selected + 2) % 3; draw_launcher(selected); }
-      if ((pad.buttons & SCE_CTRL_RIGHT) && !(previous.buttons & SCE_CTRL_RIGHT)) { selected = (selected + 1) % 3; draw_launcher(selected); }
-      if ((pad.buttons & SCE_CTRL_UP) && !(previous.buttons & SCE_CTRL_UP)) { selected = (selected + 2) % 3; draw_launcher(selected); }
-      if ((pad.buttons & SCE_CTRL_DOWN) && !(previous.buttons & SCE_CTRL_DOWN)) { selected = (selected + 1) % 3; draw_launcher(selected); }
-      if ((pad.buttons & (SCE_CTRL_CROSS | SCE_CTRL_START)) && !(previous.buttons & (SCE_CTRL_CROSS | SCE_CTRL_START))) break;
-      if ((pad.buttons & SCE_CTRL_TRIANGLE) && !(previous.buttons & SCE_CTRL_TRIANGLE)) sceKernelExitProcess(0);
+      if (now - last_status >= 1000) {
+        launcher_refresh_data();
+        last_status = now;
+        needs_draw = 1;
+      }
+      if ((pad.buttons & (SCE_CTRL_LEFT | SCE_CTRL_UP)) &&
+          !(previous.buttons & (SCE_CTRL_LEFT | SCE_CTRL_UP))) {
+        selected = (selected + L_ITEMS - 1) % L_ITEMS;
+        launcher_play_beep();
+        needs_draw = 1;
+      }
+      if ((pad.buttons & (SCE_CTRL_RIGHT | SCE_CTRL_DOWN)) &&
+          !(previous.buttons & (SCE_CTRL_RIGHT | SCE_CTRL_DOWN))) {
+        selected = (selected + 1) % L_ITEMS;
+        launcher_play_beep();
+        needs_draw = 1;
+      }
+      if (needs_draw || now - last_draw >= 70) {
+        draw_launcher(selected);
+        launcher_frame_tick++;
+        last_draw = now;
+        needs_draw = 0;
+      }
+      if ((pad.buttons & SCE_CTRL_SQUARE) && !(previous.buttons & SCE_CTRL_SQUARE)) {
+        show_data_screen(-1);
+        needs_draw = 1;
+      } else if ((pad.buttons & SCE_CTRL_SELECT) && !(previous.buttons & SCE_CTRL_SELECT)) {
+        show_controls_screen();
+        needs_draw = 1;
+      } else if ((pad.buttons & SCE_CTRL_TRIANGLE) && !(previous.buttons & SCE_CTRL_TRIANGLE)) {
+        sceKernelExitProcess(0);
+      } else if ((pad.buttons & (SCE_CTRL_CROSS | SCE_CTRL_START)) &&
+                 !(previous.buttons & (SCE_CTRL_CROSS | SCE_CTRL_START))) {
+        if (selected == L_ITEM_DATA) {
+          show_data_screen(-1);
+          needs_draw = 1;
+        } else if (!launcher_game_ready(selected)) {
+          /* Missing WADs: show where to get them instead of a fatal error. */
+          show_data_screen(selected);
+          needs_draw = 1;
+        } else {
+          break;
+        }
+      }
       previous = pad;
       sceKernelDelayThread(16000);
     }
