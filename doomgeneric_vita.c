@@ -3,6 +3,7 @@
 
 #include "d_event.h"
 #include "deh_str.h"
+#include "doomdef.h"
 #include "doomgeneric.h"
 #include "doomfeatures.h"
 #include "doomkeys.h"
@@ -17,6 +18,9 @@
 #include "z_zone.h"
 
 extern void D_PostEvent(event_t *ev);
+/* The engine keeps these internal in this tree; the Vita port drives the loop. */
+extern void D_Display(void);
+extern void TryRunTics(void);
 #include "opl3.h"
 #include "launcher_art.h"
 #include "launcher_qr.h"
@@ -58,6 +62,15 @@ static SceUID fb_memuid;
 static void *fb_base = NULL;
 static int display_ready = 0, frame_count = 0;
 static uint32_t cmap[256];
+
+/* Frame pacing. 35 is one frame per game tic, the original behaviour. 60 is
+   one frame per vsync with the view interpolated between the last two tics,
+   so movement is continuous instead of stepping 35 times per second. */
+#define FPS_CLASSIC 35
+#define FPS_SMOOTH 60
+static int fps_target = FPS_SMOOTH;
+static void settings_load(void);
+static void settings_save(void);
 static int launcher_frame = 0;
 static const unsigned char *menu_music_data = NULL;
 static int menu_music_length = 0;
@@ -559,13 +572,18 @@ static void show_data_screen(int missing_game)
     ui_wait_for_press();
 }
 
-static void show_controls_screen(void)
+/* Shows the controls and the frame pacing setting. X (or left/right) changes
+   the framerate, START goes back to the launcher. */
+static void show_options_screen(void);
+
+static void options_draw(void)
 {
+    char line[40];
     launcher_refresh_data();
     ui_rect(0, 0, VITA_W, VITA_H, UI_BG);
     ui_rect(0, 0, VITA_W, 64, UI_BAR);
     ui_rect(0, 63, VITA_W, 2, UI_GOLD);
-    ui_text(28, 18, "CONTROLS", UI_GOLD, 3);
+    ui_text(28, 18, "OPTIONS", UI_GOLD, 3);
     ui_text_right(VITA_W - 28, 26, "CHEX QUEST COLLECTION", UI_DIM, 2);
 
     ui_text(48, 96, "IN GAME", UI_GOLD, 2);
@@ -594,12 +612,59 @@ static void show_controls_screen(void)
     ui_text(520, 344, "HOLD L+R+SELECT", UI_TEXT, 2);
     ui_text(520, 368, "FOR ONE SECOND", UI_DIM, 2);
 
+    /* Frame pacing of the game itself. */
+    ui_text(48, 392, "PERFORMANCE", UI_GOLD, 2);
+    ui_rect(48, 418, 400, 2, UI_GOLD_DIM);
+    ui_text(48, 436, "FRAMERATE", UI_TEXT, 2);
+    snprintf(line, sizeof(line), "%d FPS", fps_target);
+    ui_text(48, 462, line, UI_WHITE, 2);
+    if (fps_target == FPS_SMOOTH)
+        ui_text(180, 462, "SMOOTH (INTERPOLATED)", UI_READY, 2);
+    else
+        ui_text(180, 462, "CLASSIC (ONE FRAME PER TIC)", UI_DIM, 2);
+    ui_text(520, 436, "CHANGES TAKE EFFECT", UI_DIM, 2);
+    ui_text(520, 462, "WHEN A GAME STARTS", UI_DIM, 2);
+
     ui_rect(0, 496, VITA_W, VITA_H - 496, UI_BAR);
     ui_rect(0, 494, VITA_W, 2, UI_GOLD_DIM);
-    ui_text(28, 514, "PRESS X TO GO BACK", UI_WHITE, 2);
+    ui_text(28, 514, "X OR LEFT/RIGHT: CHANGE", UI_WHITE, 2);
+    ui_text_right(VITA_W - 28, 514, "START: GO BACK", UI_DIM, 2);
 
     ui_present();
-    ui_wait_for_press();
+}
+
+static void show_options_screen(void)
+{
+    SceCtrlData pad, previous;
+    int changed;
+
+    options_draw();
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+    previous = pad; /* the button that opened the screen must not act at once */
+    for (;;) {
+        changed = 0;
+        sceCtrlPeekBufferPositive(0, &pad, 1);
+        if ((pad.buttons & SCE_CTRL_START) && !(previous.buttons & SCE_CTRL_START))
+            return;
+        if ((pad.buttons & SCE_CTRL_CROSS) && !(previous.buttons & SCE_CTRL_CROSS)) {
+            fps_target = (fps_target == FPS_SMOOTH) ? FPS_CLASSIC : FPS_SMOOTH;
+            changed = 1;
+        }
+        if ((pad.buttons & SCE_CTRL_RIGHT) && !(previous.buttons & SCE_CTRL_RIGHT)) {
+            changed = fps_target != FPS_SMOOTH;
+            fps_target = FPS_SMOOTH;
+        }
+        if ((pad.buttons & SCE_CTRL_LEFT) && !(previous.buttons & SCE_CTRL_LEFT)) {
+            changed = fps_target != FPS_CLASSIC;
+            fps_target = FPS_CLASSIC;
+        }
+        if (changed) {
+            settings_save();
+            options_draw();
+        }
+        previous = pad;
+        sceKernelDelayThread(16000);
+    }
 }
 
 /* ------------------------------------------------------------------ *
@@ -758,7 +823,7 @@ static void draw_launcher(int selected)
     draw_menu_text(L_ROW_X + 2, L_FOOTER_Y + 4, "UP/DOWN: CHOOSE   X: LAUNCH", L_COL_TEXT);
     draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 4, "TRIANGLE: EXIT", L_COL_TEXT_DIM, 1);
     draw_menu_text(L_ROW_X + 2, L_FOOTER_Y + 14, "SQUARE: DATA FILES", L_COL_GOLD_DIM);
-    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 14, "SELECT: CONTROLS", L_COL_TEXT_DIM, 1);
+    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 14, "SELECT: OPTIONS", L_COL_TEXT_DIM, 1);
     I_FinishUpdate();
 }
 
@@ -1755,37 +1820,67 @@ static uint32_t launcher_rgb(unsigned char index)
   return 0xFF000000u | (b << 16) | (g << 8) | r;
 }
 
+static uint32_t launcher_lut[256];
+static uint32_t blit_line[VITA_W];
+static unsigned short blit_col_src[VITA_W];
+static unsigned short blit_row_src[VITA_H];
+static int blit_tables_ready = 0;
+
+/* Which source column/row every screen column/row comes from. */
+static void blit_prepare_tables(void) {
+  int i;
+  for (i = 0; i < VITA_W; ++i) {
+    int sx = (int)(((long long)i * SCREENWIDTH) / VITA_W);
+    blit_col_src[i] = (unsigned short)(sx < SCREENWIDTH ? sx : SCREENWIDTH - 1);
+  }
+  for (i = 0; i < VITA_H; ++i) {
+    int sy = (int)(((long long)i * SCREENHEIGHT) / VITA_H);
+    blit_row_src[i] = (unsigned short)(sy < SCREENHEIGHT ? sy : SCREENHEIGHT - 1);
+  }
+  for (i = 0; i < 256; ++i)
+    launcher_lut[i] = launcher_rgb((unsigned char)i);
+  blit_tables_ready = 1;
+}
+
+/* Expand one source row to the full screen width. When the width is a whole
+   multiple the row is written from the source pixels directly, which keeps the
+   inner loop free of index maths and of the palette branch it used to have. */
+static void blit_expand_row(const byte *src, const uint32_t *lut) {
+#if (VITA_W % SCREENWIDTH) == 0
+  const int copies = VITA_W / SCREENWIDTH;
+  uint32_t *dst = blit_line;
+  int sx;
+  for (sx = 0; sx < SCREENWIDTH; ++sx) {
+    uint32_t color = lut[src[sx]];
+    int n = copies;
+    while (n--)
+      *dst++ = color;
+  }
+#else
+  int x;
+  for (x = 0; x < VITA_W; ++x)
+    blit_line[x] = lut[src[blit_col_src[x]]];
+#endif
+}
+
 void I_FinishUpdate(void) {
+  const uint32_t *lut;
   uint32_t *dst;
-  int x, y, step_x, step_y, sy_f;
+  int y;
   if (!display_ready || !I_VideoBuffer || !fb_base)
     return;
+  if (!blit_tables_ready)
+    blit_prepare_tables();
+  /* The launcher screens use their own fixed palette. */
+  lut = launcher_frame ? launcher_lut : cmap;
   dst = (uint32_t *)fb_base;
-  step_x = (SCREENWIDTH << 16) / VITA_W;
-  step_y = (SCREENHEIGHT << 16) / VITA_H;
-  sy_f = 0;
-  for (y = 0; y < VITA_H; y++) {
-    int sy = sy_f >> 16;
-    uint32_t *dr;
-    byte *sr;
-    int sx_f;
-    if (sy >= SCREENHEIGHT)
-      sy = SCREENHEIGHT - 1;
-    dr = dst + y * 960;
-    sr = I_VideoBuffer + sy * SCREENWIDTH;
-    sx_f = 0;
-    for (x = 0; x < VITA_W; x++) {
-      int sx = sx_f >> 16;
-      if (sx >= SCREENWIDTH)
-        sx = SCREENWIDTH - 1;
-      if (launcher_frame) {
-        dr[x] = launcher_rgb(sr[sx]);
-      } else {
-        dr[x] = cmap[sr[sx]];
-      }
-      sx_f += step_x;
-    }
-    sy_f += step_y;
+  /* Each source row is expanded once, then copied into every screen row that
+     maps onto it: far less work than scaling pixel by pixel every row. */
+  for (y = 0; y < VITA_H; ++y) {
+    int sy = blit_row_src[y];
+    if (y == 0 || sy != blit_row_src[y - 1])
+      blit_expand_row(I_VideoBuffer + sy * SCREENWIDTH, lut);
+    memcpy(dst + y * VITA_W, blit_line, sizeof(blit_line));
   }
   /* The launcher draws its own screens; only the game gets overlays. */
   if (!launcher_frame)
@@ -2184,6 +2279,176 @@ void I_Endoom(byte *d) { (void)d; }
 char *gus_patch_path = "";
 int gus_ram_kb = 0;
 
+/* ------------------------------------------------------------------ *
+ * Settings file                                                       *
+ * ------------------------------------------------------------------ */
+
+#define SETTINGS_PATH VITA_GAME_DATA_DIR "settings.cfg"
+
+static void settings_load(void) {
+  char buf[128];
+  const char *value;
+  int size;
+  SceUID fd = sceIoOpen(SETTINGS_PATH, SCE_O_RDONLY, 0);
+  if (fd < 0)
+    return;
+  size = sceIoRead(fd, buf, sizeof(buf) - 1);
+  sceIoClose(fd);
+  if (size <= 0)
+    return;
+  buf[size] = '\0';
+  value = strstr(buf, "framerate=");
+  if (value) {
+    int fps = atoi(value + 10);
+    if (fps == FPS_CLASSIC || fps == FPS_SMOOTH)
+      fps_target = fps;
+  }
+  debug_logf("settings: framerate=%d", fps_target);
+}
+
+static void settings_save(void) {
+  char buf[64];
+  SceUID fd;
+  snprintf(buf, sizeof(buf), "framerate=%d\n", fps_target);
+  fd = sceIoOpen(SETTINGS_PATH, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+  if (fd < 0) {
+    debug_log("settings: cannot write settings.cfg");
+    return;
+  }
+  sceIoWrite(fd, buf, (unsigned)strlen(buf));
+  sceIoClose(fd);
+  debug_logf("settings: saved framerate=%d", fps_target);
+}
+
+/* ------------------------------------------------------------------ *
+ * Frame loop                                                          *
+ *                                                                     *
+ * Classic mode is the engine as it always was: one frame per game tic, *
+ * 35 per second. Smooth mode draws once per vsync and interpolates the *
+ * view between the previous and the current tic, so movement is        *
+ * continuous at 60 frames per second instead of stepping 35 times.     *
+ * ------------------------------------------------------------------ */
+
+typedef struct {
+  fixed_t x, y, z;
+  angle_t angle;
+} view_state_t;
+
+static view_state_t view_prev, view_cur;
+static int view_valid = 0, view_had = 0, view_overridden = 0;
+static player_t *view_player = NULL;
+static fixed_t view_saved_x, view_saved_y, view_saved_z;
+static angle_t view_saved_angle;
+
+static fixed_t lerp_fixed(fixed_t a, fixed_t b, uint32_t frac) {
+  return a + (fixed_t)((((int64_t)b - (int64_t)a) * (int64_t)frac) >> 16);
+}
+
+static angle_t lerp_angle(angle_t a, angle_t b, uint32_t frac) {
+  int32_t delta = (int32_t)(b - a);
+  return a + (angle_t)(((int64_t)delta * (int64_t)frac) >> 16);
+}
+
+/* The renderer takes the camera straight from the player (R_SetupFrame), so
+   these are the values that have to be interpolated. */
+static int view_sample(view_state_t *s) {
+  player_t *p = &players[displayplayer];
+  if (gamestate != GS_LEVEL || p->mo == NULL)
+    return 0;
+  s->x = p->mo->x;
+  s->y = p->mo->y;
+  s->z = p->viewz;
+  s->angle = p->mo->angle;
+  return 1;
+}
+
+/* Remember the view the last tic produced, keeping the previous one around:
+   the frame that gets drawn is always between those two. */
+static void view_advance(void) {
+  view_state_t s;
+  if (!view_sample(&s)) {
+    view_valid = 0;
+    view_had = 0;
+    return;
+  }
+  if (!view_had) {
+    view_prev = s;
+    view_cur = s;
+    view_had = 1;
+  } else {
+    view_prev = view_cur;
+    view_cur = s;
+  }
+  view_valid = 1;
+}
+
+/* Move the player for the frame being drawn only: the values are restored as
+   soon as the frame is on screen, so the simulation never sees them. */
+static void view_apply(uint32_t frac) {
+  player_t *p = &players[displayplayer];
+  if (!view_valid || p->mo == NULL)
+    return;
+  view_player = p;
+  view_saved_x = p->mo->x;
+  view_saved_y = p->mo->y;
+  view_saved_angle = p->mo->angle;
+  view_saved_z = p->viewz;
+  p->mo->x = lerp_fixed(view_prev.x, view_cur.x, frac);
+  p->mo->y = lerp_fixed(view_prev.y, view_cur.y, frac);
+  p->mo->angle = lerp_angle(view_prev.angle, view_cur.angle, frac);
+  p->viewz = lerp_fixed(view_prev.z, view_cur.z, frac);
+  view_overridden = 1;
+}
+
+static void view_restore(void) {
+  if (!view_overridden)
+    return;
+  if (view_player && view_player->mo) {
+    view_player->mo->x = view_saved_x;
+    view_player->mo->y = view_saved_y;
+    view_player->mo->angle = view_saved_angle;
+    view_player->viewz = view_saved_z;
+  }
+  view_overridden = 0;
+}
+
+/* How far the current tic has progressed, in 16.16 fixed point. */
+static uint32_t subtic_fraction(void) {
+  uint64_t us = sceKernelGetProcessTimeLow();
+  uint64_t into_tic = (us * (uint64_t)TICRATE) % 1000000ULL;
+  return (uint32_t)((into_tic << 16) / 1000000ULL);
+}
+
+static void game_loop_classic(void) {
+  for (;;)
+    doomgeneric_Tick();
+}
+
+static void game_loop_smooth(void) {
+  int last_tic;
+  view_advance();
+  last_tic = I_GetTime();
+  for (;;) {
+    int now_tic = I_GetTime();
+    if (now_tic != last_tic) {
+      last_tic = now_tic;
+      /* Run the game tics without drawing: the frame that follows shows the
+         state they produced, interpolated from the one before. */
+      I_StartFrame();
+      TryRunTics();
+      S_UpdateSounds(players[consoleplayer].mo);
+      view_advance();
+    }
+    if (!screenvisible) {
+      sceKernelDelayThread(16000);
+      continue;
+    }
+    view_apply(subtic_fraction());
+    D_Display();
+    view_restore();
+  }
+}
+
 /* MAIN */
 int main(int argc, char **argv) {
   SceAppUtilInitParam ip;
@@ -2203,6 +2468,7 @@ int main(int argc, char **argv) {
   sceIoMkdir(VITA_GAME_DATA_DIR, 0777);
   sceIoRemove(VITA_GAME_DATA_DIR "debug.log");
   debug_log("=== Chex Quest Collection ===");
+  settings_load();
   sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG_WIDE);
   init_display();
   if (!display_ready) fatal_error("Could not initialize Vita display");
@@ -2280,7 +2546,7 @@ int main(int argc, char **argv) {
         show_data_screen(-1);
         needs_draw = 1;
       } else if ((pad.buttons & SCE_CTRL_SELECT) && !(previous.buttons & SCE_CTRL_SELECT)) {
-        show_controls_screen();
+        show_options_screen();
         needs_draw = 1;
       } else if ((pad.buttons & SCE_CTRL_TRIANGLE) && !(previous.buttons & SCE_CTRL_TRIANGLE)) {
         sceKernelExitProcess(0);
@@ -2344,6 +2610,9 @@ int main(int argc, char **argv) {
       doomgeneric_Create(nargc, nargv);
     }
   }
-  while (1) doomgeneric_Tick();
+  if (fps_target == FPS_SMOOTH)
+    game_loop_smooth();
+  else
+    game_loop_classic();
   return 0;
 }
