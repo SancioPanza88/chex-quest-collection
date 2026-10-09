@@ -90,9 +90,8 @@ class Canvas:
 OPTION_ROWS = [
     # label, x, y, width, height, value shown for the settings as shipped
     ("FRAMERATE", 48, 336, 864, 34, "60 FPS  EVERY FRAME"),
-    ("PICTURE", 48, 376, 864, 34, "SHARP  FULL SCREEN AND HARD PIXELS"),
-    ("AUTO SPEED", 48, 416, 864, 34, "ON  DROPS TO 30 IF 60 DOES NOT FIT"),
-    ("FRAME COUNTER", 48, 456, 864, 34, "OFF  KEEPS THE SCREEN CLEAN"),
+    ("AUTO SPEED", 48, 376, 864, 34, "ON  DROPS TO 30 IF 60 DOES NOT FIT"),
+    ("FRAME COUNTER", 48, 416, 864, 34, "OFF  KEEPS THE SCREEN CLEAN"),
 ]
 
 
@@ -125,7 +124,7 @@ def options_screen() -> Canvas:
         else:
             canvas.text(x, y, label, colour)
 
-    canvas.text(48, 316, "PICTURE AND SPEED", GOLD)
+    canvas.text(48, 316, "PERFORMANCE", GOLD)
     canvas.text_right(WIDTH - 48, 316, "THEY APPLY WHEN A GAME STARTS", DIM)
 
     for index, (label, x, y, width, height, value) in enumerate(OPTION_ROWS):

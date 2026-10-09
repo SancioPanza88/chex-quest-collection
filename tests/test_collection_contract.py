@@ -85,36 +85,6 @@ class CollectionContractTests(unittest.TestCase):
         self.assertNotIn("if (launcher_frame) {", source)
         self.assertNotIn("sx_f += step_x;", source)
 
-    def test_picture_modes_change_how_the_frame_reaches_the_panel(self):
-        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
-        # Three ways to put the 320x200 picture on the 960x544 panel.
-        self.assertIn("#define PICTURE_SHARP 0", source)
-        self.assertIn("#define PICTURE_SMOOTH 1", source)
-        self.assertIn("#define PICTURE_BOX 2", source)
-        self.assertIn("static void blit_fill(const uint32_t *lut)", source)
-        self.assertIn("static void blit_smooth(const uint32_t *lut)", source)
-        self.assertIn("static void blit_box(const uint32_t *lut)", source)
-        # SMOOTH averages each source row with the one under it, so the 2.72x
-        # stretch stops showing uneven row heights as bands.
-        self.assertIn("blit_build_blend_rows(lut);", source)
-        self.assertIn("blit_expand_row_rgb(blend_rows + sy * SCREENWIDTH);", source)
-        self.assertIn("blend_half(lut[here[x]], lut[next[x]])", source)
-        self.assertIn("out[x] = blend_half", source)
-        # BOX is exactly twice the size and centred: every game pixel becomes a
-        # 2x2 square, the rest of the panel stays black.
-        self.assertIn("#define BOX_W (SCREENWIDTH * 2)", source)
-        self.assertIn("#define BOX_X ((VITA_W - BOX_W) / 2)", source)
-        self.assertIn("row[2 * x] = color;", source)
-        self.assertIn("row[2 * x + 1] = color;", source)
-        self.assertIn("row[x] = 0xFF000000u;", source)
-        # The launcher artwork was drawn for the whole panel, so its own
-        # screens keep the plain fill whatever the game picture mode is.
-        self.assertIn("int mode = launcher_frame ? PICTURE_SHARP : picture_mode;", source)
-        self.assertIn("mode = PICTURE_SHARP;", source)
-        # Choosing a mode rebuilds the blit tables.
-        self.assertIn("static void picture_choose(int mode)", source)
-        self.assertIn("blit_invalidate();", source)
-
     def test_automatic_speed_guard_drops_to_thirty(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
         # 30 frames per second: every other vertical blank is left empty, so
@@ -143,7 +113,8 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn("auto_dropped = 0;", source)
         # ... and the saved file keeps the choice, not the drop.
         self.assertIn("fps_active = fps_target;", source)
-        self.assertIn("fps_target, picture_mode, auto_speed, fps_counter_on", source)
+        self.assertIn('"framerate=%d\\nauto=%d\\ncounter=%d\\n", fps_target', source)
+        self.assertNotIn('"framerate=%d\\nauto=%d\\ncounter=%d\\n", fps_active', source)
 
     def test_things_weapon_and_sectors_are_interpolated(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
@@ -223,21 +194,16 @@ class CollectionContractTests(unittest.TestCase):
     def test_framerate_choice_is_saved_and_documented(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
         self.assertIn('VITA_GAME_DATA_DIR "settings.cfg"', source)
-        self.assertIn(
-            '"framerate=%d\\npicture=%d\\nauto=%d\\ncounter=%d\\n"', source
-        )
+        self.assertIn('"framerate=%d\\nauto=%d\\ncounter=%d\\n"', source)
         self.assertIn('strstr(buf, "framerate=")', source)
         self.assertIn('strstr(buf, "counter=")', source)
         self.assertIn("settings_load();", source)
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("## Picture and speed", readme)
         self.assertIn("## Framerate", readme)
         self.assertIn("35 FPS (classic)", readme)
         self.assertIn("monsters", readme)
         self.assertIn("doors, lifts and moving floors", readme)
-        for mode in ("SHARP", "SMOOTH", "BOX"):
-            self.assertIn(mode, readme)
-        self.assertIn("automatic speed guard", readme)
+        self.assertIn("## Automatic speed guard", readme)
 
     def test_frames_go_out_double_buffered(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
@@ -259,19 +225,17 @@ class CollectionContractTests(unittest.TestCase):
         self.assertEqual(source.count("if (fb_allocated > 1) {"), 2)
         # Every screen draws through fb_base, so they all follow the exchange:
         # the two native helpers and the game blit each read it per call.
-        # the three game blitters and the two native drawing helpers
-        self.assertEqual(source.count("uint32_t *dst = (uint32_t *)fb_base;"), 5)
+        self.assertEqual(source.count("uint32_t *dst = (uint32_t *)fb_base;"), 2)
         self.assertIn("dst = (uint32_t *)fb_base;", source)
 
     def test_options_screen_selects_and_stores_the_settings(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
-        # A real menu: four boxed rows, UP/DOWN to choose, X or left/right to
+        # A real menu: three boxed rows, UP/DOWN to choose, X or left/right to
         # change the value of the selected row.
-        self.assertIn("#define OPT_ROWS 4", source)
-        for label in ("FRAMERATE", "PICTURE", "AUTO SPEED", "FRAME COUNTER"):
+        self.assertIn("#define OPT_ROWS 3", source)
+        for label in ("FRAMERATE", "AUTO SPEED", "FRAME COUNTER"):
             self.assertIn(f'"{label}"', source)
-        self.assertIn('"PICTURE AND SPEED"', source)
-        self.assertIn('strstr(buf, "picture=")', source)
+        self.assertIn('"PERFORMANCE"', source)
         self.assertIn('strstr(buf, "auto=")', source)
         self.assertIn("static int options_selected = 0;", source)
         self.assertIn("options_selected = (options_selected + OPT_ROWS - 1) % OPT_ROWS;", source)
@@ -290,7 +254,6 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn('"%d FPS  %d.%d MS"', source)
         self.assertIn("fps_counter_tick();", source)
         self.assertIn("counter=%d", source)
-        self.assertIn("picture=%d", source)
 
     def test_readme_options_screenshot_is_generated_from_the_port(self):
         # The README shows the OPTIONS screen, and that image is not a
@@ -310,7 +273,7 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn('"OPTIONS"', generator)
         self.assertIn('"FRAME COUNTER"', generator)
         self.assertIn("OPTION_ROWS", generator)
-        # The four selector rows of the screen are all checked for overlap.
+        # Every selector row of the screen is checked for overlap.
         self.assertIn("for label, x, y, width, height, _value in OPTION_ROWS:", generator)
 
     def test_readme_is_english(self):

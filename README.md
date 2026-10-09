@@ -2,7 +2,7 @@
 
 One Vita app for **Chex Quest 1**, **Chex Quest 2** and **Chex Quest 3: Vanilla Edition**. Pick a game in the launcher and press **Cross** or **START** to play it.
 
-The launcher is a proper menu now: it lists the three games plus a data-files row, shows at a glance which games are ready, plays menu music and blips, and can hand you the game data with a QR code if something is missing. Games run at **60 frames per second** with a smooth, interpolated view, the old 35 fps pacing and a 30 fps mode are one press away in the options screen, and the picture can be shown sharp, smoothed or pixel perfect at twice the size.
+The launcher is a proper menu now: it lists the three games plus a data-files row, shows at a glance which games are ready, plays menu music and blips, and can hand you the game data with a QR code if something is missing. Games run at **60 frames per second** with a smooth, interpolated view, and the old 35 fps pacing and a 30 fps mode are one press away in the options screen.
 
 ## Screenshots
 
@@ -14,9 +14,9 @@ The launcher is a proper menu now: it lists the three games plus a data-files ro
 |---|---|
 | ![Data files screen with QR code](docs/screenshots/data-qr.png) | ![Data screen reporting the missing files](docs/screenshots/data-missing.png) |
 
-| Options, picture and speed | Return to launcher | Quick save |
+| Options and controls | Return to launcher | Quick save |
 |---|---|---|
-| ![Options screen: the control list with four boxed setting rows](docs/screenshots/options.png) | ![Hold L, R and Select to return to the launcher](docs/screenshots/return-to-launcher.png) | ![Quick saved confirmation](docs/screenshots/quick-save.png) |
+| ![Options screen: the control list with the boxed setting rows](docs/screenshots/options.png) | ![Hold L, R and Select to return to the launcher](docs/screenshots/return-to-launcher.png) | ![Quick saved confirmation](docs/screenshots/quick-save.png) |
 
 ## Download and install
 
@@ -81,25 +81,17 @@ To leave a game and go back to the launcher, **hold L + R + SELECT for one secon
 
 The picture is presented double buffered — two framebuffers exchanged at the vertical blank — so the frame being scanned out is never overwritten and turning the view does not tear the image.
 
-Games draw at **60 fps** by default. The simulation still runs on Doom's fixed 35 Hz timestep, so the frame you see is interpolated between the last two tics: movement and turning, monsters, projectiles, items, the weapon sway and the sector heights — **doors, lifts and moving floors** — are all continuous instead of stepping 35 times per second, at the cost of the picture being one tic (about 28 ms) behind the input. A jump longer than a single tic of movement, like a teleport or a spawn, is never interpolated, so nothing smears across the map. The automatic speed guard and the three picture modes are described under **Picture and speed** above.
+Games draw at **60 fps** by default. The simulation still runs on Doom's fixed 35 Hz timestep, so the frame you see is interpolated between the last two tics: movement and turning, monsters, projectiles, items, the weapon sway and the sector heights — **doors, lifts and moving floors** — are all continuous instead of stepping 35 times per second, at the cost of the picture being one tic (about 28 ms) behind the input. A jump longer than a single tic of movement, like a teleport or a spawn, is never interpolated, so nothing smears across the map. **AUTO SPEED**, the automatic speed guard, is described above.
 
-## Picture and speed
+## Automatic speed guard
 
-The **OPTIONS** screen (**SELECT** in the launcher) is a menu of four boxed rows: **UP/DOWN** chooses a row, **X** or left/right changes its value. Everything it sets is stored in `ux0:/data/chexquestcollection/settings.cfg` and applies the next time you start a game; the screen also lists the full control mapping.
+The **OPTIONS** screen (**SELECT** in the launcher) is a menu of three boxed rows: **UP/DOWN** chooses a row, **X** or left/right changes its value. Everything it sets is stored in `ux0:/data/chexquestcollection/settings.cfg` and applies the next time you start a game; the screen also lists the full control mapping.
 
 **FRAMERATE** picks how the picture is paced:
 
 - **60 FPS** (default) — one frame per vertical blank with the interpolated view.
 - **30 FPS** — one frame every other vertical blank. Half the frames to draw leaves the console the headroom the heaviest maps need, at the cost of a less fluid picture.
 - **35 FPS (classic)** — one frame per game tic, exactly like the original engine and the most direct feel.
-
-**PICTURE** picks how the 320x200 game picture reaches the 960x544 panel:
-
-- **SHARP** (default) — nearest neighbour, filling the whole screen. Blocks of two or three panel rows per game row, which is the look the game was designed for.
-- **SMOOTH** — the same size, but each source row is averaged with the row under it, so the uneven row heights of the 2.72x stretch stop showing as horizontal bands while the view turns.
-- **BOX** — exactly twice the size, centred, with black around it: every game pixel is a clean 2x2 square, the sharpest the picture can look, on a smaller image.
-
-The launcher's own artwork was drawn for the whole panel, so its screens always keep the full-screen mapping.
 
 **AUTO SPEED** (on by default) is the guard that keeps 60 fps honest. It measures the frames actually presented, and if two whole seconds in a row land below 55 fps — a scene that does not fit — the port drops to 30 fps for the rest of the session and says so on screen with **AUTO SPEED: 30 FPS**. A second in which the loop barely ran at all, like a level load or a screen wipe, is not counted: 30 frames would not have fixed that. The framerate you chose in the menu is not overwritten: it is the value saved to `settings.cfg`, and picking a framerate by hand cancels the drop.
 

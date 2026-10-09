@@ -95,12 +95,6 @@ static int auto_dropped = 0;
 /* Alternates in the frame loop when the port is running at 30 frames. */
 static int fps_skip_next = 0;
 
-/* How the 320x200 game picture is shown on the 960x544 panel. */
-#define PICTURE_SHARP 0  /* nearest neighbour, filling the whole screen */
-#define PICTURE_SMOOTH 1 /* the same size, with the step between rows softened */
-#define PICTURE_BOX 2    /* exactly twice the size, centred, black surround */
-static int picture_mode = PICTURE_SHARP;
-
 /* Counts the presented frames once per second and shows them in game. */
 static int fps_counter_on = 0;
 static uint32_t fps_window_start = 0;
@@ -214,7 +208,6 @@ static int save_directory_ready = 0;
 
 void I_InitGraphics(void);
 void I_FinishUpdate(void);
-static void picture_choose(int mode);
 
 static const char menu_glyphs[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-./<abcdefghijklmnopqrstuvwxyz>+";
@@ -642,7 +635,7 @@ static void show_data_screen(int missing_game)
 /* The options screen: a boxed selector for the settings plus the control
    list. UP/DOWN chooses a row, X or left/right changes its value, START goes
    back to the launcher. */
-#define OPT_ROWS 4
+#define OPT_ROWS 3
 #define OPT_ROW_X 48
 #define OPT_ROW_W 864
 #define OPT_ROW_H 34
@@ -651,7 +644,7 @@ static void show_data_screen(int missing_game)
 #define OPT_VALUE_X (OPT_ROW_X + 250)
 
 static const char *const opt_labels[OPT_ROWS] = {
-    "FRAMERATE", "PICTURE", "AUTO SPEED", "FRAME COUNTER"
+    "FRAMERATE", "AUTO SPEED", "FRAME COUNTER"
 };
 
 static int options_selected = 0;
@@ -678,9 +671,6 @@ static int options_toggle(int row)
                    : fps_target == FPS_PERFORMANCE ? FPS_CLASSIC : FPS_SMOOTH);
         break;
     case 1:
-        picture_choose((picture_mode + 1) % 3);
-        break;
-    case 2:
         auto_speed = !auto_speed;
         if (!auto_speed)
             fps_choose(fps_target);
@@ -701,11 +691,6 @@ static int options_set(int row, int right)
             return 0;
         fps_choose(wanted);
     } else if (row == 1) {
-        int wanted = right ? (picture_mode + 1) % 3 : (picture_mode + 2) % 3;
-        if (picture_mode == wanted)
-            return 0;
-        picture_choose(wanted);
-    } else if (row == 2) {
         if (auto_speed == (right != 0))
             return 0;
         auto_speed = right != 0;
@@ -750,14 +735,6 @@ static void options_value(int row, char *out, size_t size)
                                                  : "ONE FRAME PER TIC");
         break;
     case 1:
-        snprintf(out, size, "%s  %s",
-                 picture_mode == PICTURE_SHARP ? "SHARP"
-                 : picture_mode == PICTURE_SMOOTH ? "SMOOTH" : "BOX",
-                 picture_mode == PICTURE_SHARP ? "FULL SCREEN AND HARD PIXELS"
-                 : picture_mode == PICTURE_SMOOTH ? "FULL SCREEN AND SOFT ROWS"
-                                                  : "TWICE THE SIZE AND CENTRED");
-        break;
-    case 2:
         snprintf(out, size, "%s  %s", auto_speed ? "ON" : "OFF",
                  auto_speed ? "DROPS TO 30 IF 60 DOES NOT FIT"
                             : "ALWAYS KEEPS THE CHOSEN RATE");
@@ -803,7 +780,7 @@ static void options_draw(void)
     ui_text(520, 284, "HOLD L+R+SELECT FOR A SECOND", UI_TEXT, 2);
 
     /* The settings of the game itself, each in its own box. */
-    ui_text(48, 316, "PICTURE AND SPEED", UI_GOLD, 2);
+    ui_text(48, 316, "PERFORMANCE", UI_GOLD, 2);
     ui_text_right(VITA_W - 48, 316, "THEY APPLY WHEN A GAME STARTS", UI_DIM, 2);
     for (i = 0; i < OPT_ROWS; ++i)
         options_draw_row(i);
@@ -2081,25 +2058,7 @@ static uint32_t launcher_lut[256];
 static uint32_t blit_line[VITA_W];
 static unsigned short blit_col_src[VITA_W];
 static unsigned short blit_row_src[VITA_H];
-/* SMOOTH blends a source row with the one under it, so every screen row is a
-   softened step instead of a copied row: the uneven row heights of a 2.72x
-   stretch stop showing as bands. */
-static uint32_t *blend_rows = NULL; /* SCREENHEIGHT rows of RGB colors */
 static int blit_tables_ready = 0;
-
-/* BOX shows the picture at exactly twice its size, centred: every game pixel
-   is a 2x2 square on the panel, with black around it. It is the sharpest the
-   picture can look, at the price of a smaller image. */
-#define BOX_W (SCREENWIDTH * 2)
-#define BOX_H (SCREENHEIGHT * 2)
-#define BOX_X ((VITA_W - BOX_W) / 2)
-#define BOX_Y ((VITA_H - BOX_H) / 2)
-
-/* The average of two palette entries is not another palette entry, so the
-   blended rows hold colours: one packed average per channel, alpha kept. */
-static uint32_t blend_half(uint32_t a, uint32_t b) {
-  return (((a & 0xFEFEFEFEu) >> 1) + ((b & 0xFEFEFEFEu) >> 1)) | 0xFF000000u;
-}
 
 /* Which source column/row every screen column/row comes from. */
 static void blit_prepare_tables(void) {
@@ -2114,20 +2073,7 @@ static void blit_prepare_tables(void) {
   }
   for (i = 0; i < 256; ++i)
     launcher_lut[i] = launcher_rgb((unsigned char)i);
-  if (!blend_rows)
-    blend_rows = (uint32_t *)malloc(SCREENHEIGHT * SCREENWIDTH * sizeof(uint32_t));
   blit_tables_ready = 1;
-}
-
-/* Fresh tables after the picture mode changed; the small tables are cheap to
-   rebuild and the blended rows are rebuilt from the picture every frame. */
-static void blit_invalidate(void) { blit_tables_ready = 0; }
-
-static void picture_choose(int mode) {
-  if (mode < 0 || mode > PICTURE_BOX || mode == picture_mode)
-    return;
-  picture_mode = mode;
-  blit_invalidate();
 }
 
 /* Expand one source row to the full screen width. When the width is a whole
@@ -2151,110 +2097,25 @@ static void blit_expand_row(const byte *src, const uint32_t *lut) {
 #endif
 }
 
-/* The same expansion for a row that already holds colors. */
-static void blit_expand_row_rgb(const uint32_t *src) {
-#if (VITA_W % SCREENWIDTH) == 0
-  const int copies = VITA_W / SCREENWIDTH;
-  uint32_t *dst = blit_line;
-  int sx;
-  for (sx = 0; sx < SCREENWIDTH; ++sx) {
-    uint32_t color = src[sx];
-    int n = copies;
-    while (n--)
-      *dst++ = color;
-  }
-#else
-  int x;
-  for (x = 0; x < VITA_W; ++x)
-    blit_line[x] = src[blit_col_src[x]];
-#endif
-}
-
-/* One blended row per source row, built once per frame from the picture. */
-static void blit_build_blend_rows(const uint32_t *lut) {
+void I_FinishUpdate(void) {
+  const uint32_t *lut;
+  uint32_t *dst;
   int y;
-  for (y = 0; y < SCREENHEIGHT; ++y) {
-    const byte *here = I_VideoBuffer + y * SCREENWIDTH;
-    const byte *next = I_VideoBuffer + (y + 1 < SCREENHEIGHT ? y + 1 : y) * SCREENWIDTH;
-    uint32_t *out = blend_rows + y * SCREENWIDTH;
-    int x;
-    for (x = 0; x < SCREENWIDTH; ++x)
-      out[x] = blend_half(lut[here[x]], lut[next[x]]);
-  }
-}
-
-/* Fill the whole panel with the picture, one copied row at a time. */
-static void blit_fill(const uint32_t *lut) {
-  uint32_t *dst = (uint32_t *)fb_base;
-  int y;
+  if (!display_ready || !I_VideoBuffer || !fb_base)
+    return;
+  if (!blit_tables_ready)
+    blit_prepare_tables();
+  /* The launcher screens use their own fixed palette. */
+  lut = launcher_frame ? launcher_lut : cmap;
+  dst = (uint32_t *)fb_base;
+  /* Each source row is expanded once, then copied into every screen row that
+     maps onto it: far less work than scaling pixel by pixel every row. */
   for (y = 0; y < VITA_H; ++y) {
     int sy = blit_row_src[y];
     if (y == 0 || sy != blit_row_src[y - 1])
       blit_expand_row(I_VideoBuffer + sy * SCREENWIDTH, lut);
     memcpy(dst + y * VITA_W, blit_line, sizeof(blit_line));
   }
-}
-
-/* The whole panel, with the rows blended instead of copied. */
-static void blit_smooth(const uint32_t *lut) {
-  uint32_t *dst = (uint32_t *)fb_base;
-  int y;
-  blit_build_blend_rows(lut);
-  for (y = 0; y < VITA_H; ++y) {
-    int sy = blit_row_src[y];
-    if (y == 0 || sy != blit_row_src[y - 1])
-      blit_expand_row_rgb(blend_rows + sy * SCREENWIDTH);
-    memcpy(dst + y * VITA_W, blit_line, sizeof(blit_line));
-  }
-}
-
-/* Twice the size in the middle, black bands around it. */
-static void blit_box(const uint32_t *lut) {
-  uint32_t *dst = (uint32_t *)fb_base;
-  int x, y;
-  for (y = 0; y < VITA_H; ++y) {
-    uint32_t *row = dst + y * VITA_W;
-    if (y < BOX_Y || y >= BOX_Y + BOX_H) {
-      for (x = 0; x < VITA_W; ++x)
-        row[x] = 0xFF000000u;
-      continue;
-    }
-    for (x = 0; x < BOX_X; ++x) {
-      row[x] = 0xFF000000u;
-      row[VITA_W - 1 - x] = 0xFF000000u;
-    }
-  }
-  for (y = 0; y < BOX_H; ++y) {
-    const byte *src = I_VideoBuffer + (y >> 1) * SCREENWIDTH;
-    uint32_t *row = dst + (BOX_Y + y) * VITA_W + BOX_X;
-    if (y & 1) {
-      memcpy(row, row - VITA_W, (size_t)BOX_W * sizeof(uint32_t));
-      continue;
-    }
-    for (x = 0; x < SCREENWIDTH; ++x) {
-      uint32_t color = lut[src[x]];
-      row[2 * x] = color;
-      row[2 * x + 1] = color;
-    }
-  }
-}
-
-void I_FinishUpdate(void) {
-  /* The launcher draws artwork made for the whole panel, so its own screens
-     always use the plain fill whatever the game picture mode is. */
-  int mode = launcher_frame ? PICTURE_SHARP : picture_mode;
-  if (!display_ready || !I_VideoBuffer || !fb_base)
-    return;
-  if (!blit_tables_ready)
-    blit_prepare_tables();
-  if (mode != PICTURE_SHARP && !blend_rows)
-    mode = PICTURE_SHARP; /* without the scratch rows, fall back to the fill */
-  if (mode == PICTURE_SMOOTH)
-    blit_smooth(cmap);
-  else if (mode == PICTURE_BOX)
-    blit_box(cmap);
-  else
-    blit_fill(launcher_frame ? launcher_lut : cmap);
   /* The launcher draws its own screens; only the game gets overlays. */
   if (!launcher_frame)
     draw_game_overlays();
@@ -2676,12 +2537,6 @@ static void settings_load(void) {
     if (fps == FPS_CLASSIC || fps == FPS_SMOOTH || fps == FPS_PERFORMANCE)
       fps_target = fps;
   }
-  value = strstr(buf, "picture=");
-  if (value) {
-    int mode = atoi(value + 8);
-    if (mode >= PICTURE_SHARP && mode <= PICTURE_BOX)
-      picture_mode = mode;
-  }
   value = strstr(buf, "auto=");
   if (value)
     auto_speed = atoi(value + 5) != 0;
@@ -2689,15 +2544,15 @@ static void settings_load(void) {
   if (value)
     fps_counter_on = atoi(value + 8) != 0;
   fps_active = fps_target;
-  debug_logf("settings: framerate=%d picture=%d auto=%d counter=%d",
-             fps_target, picture_mode, auto_speed, fps_counter_on);
+  debug_logf("settings: framerate=%d auto=%d counter=%d", fps_target,
+             auto_speed, fps_counter_on);
 }
 
 static void settings_save(void) {
   char buf[96];
   SceUID fd;
-  snprintf(buf, sizeof(buf), "framerate=%d\npicture=%d\nauto=%d\ncounter=%d\n",
-           fps_target, picture_mode, auto_speed, fps_counter_on);
+  snprintf(buf, sizeof(buf), "framerate=%d\nauto=%d\ncounter=%d\n", fps_target,
+           auto_speed, fps_counter_on);
   fd = sceIoOpen(SETTINGS_PATH, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
   if (fd < 0) {
     debug_log("settings: cannot write settings.cfg");
@@ -2705,8 +2560,8 @@ static void settings_save(void) {
   }
   sceIoWrite(fd, buf, (unsigned)strlen(buf));
   sceIoClose(fd);
-  debug_logf("settings: saved framerate=%d picture=%d auto=%d counter=%d",
-             fps_target, picture_mode, auto_speed, fps_counter_on);
+  debug_logf("settings: saved framerate=%d auto=%d counter=%d", fps_target,
+             auto_speed, fps_counter_on);
 }
 
 /* ------------------------------------------------------------------ *
