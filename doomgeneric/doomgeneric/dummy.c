@@ -11,6 +11,7 @@
  *---------------------------------------------------------------------*/
 
 #include "doomtype.h"
+#include "doomfeatures.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
@@ -24,9 +25,15 @@
  *  public data                                                        *
  *---------------------------------------------------------------------*/
 
+/* The netgame layer owns these two once it is compiled in, and dummy.c is
+   only here to cover what the port does not build. */
+#ifndef FEATURE_MULTIPLAYER
+
 boolean net_client_connected = false;
 
 boolean drone = false;
+
+#endif
 
 /*---------------------------------------------------------------------*
  *  private data                                                       *
