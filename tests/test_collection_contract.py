@@ -419,8 +419,16 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn('"OPTIONS"', generator)
         self.assertIn('"FRAME COUNTER"', generator)
         self.assertIn("OPTION_ROWS", generator)
-        # Every selector row of the screen is checked for overlap.
-        self.assertIn("for label, x, y, width, height, _value in OPTION_ROWS:", generator)
+        # Every selector row of those screens is checked for overlap, and the
+        # co-op screen is rendered the same way from the port's own layout.
+        self.assertIn("in OPTION_ROWS + COOP_HOSTING_ROWS + COOP_JOINING_ROWS:", generator)
+        self.assertIn("def coop_screen(", generator)
+        self.assertIn("COOP_HOSTING_ROWS", generator)
+        self.assertIn("COOP_JOINING_ROWS", generator)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for name in ("coop-host.png", "coop-join.png"):
+            self.assertIn(f"docs/screenshots/{name}", readme)
+            self.assertTrue((ROOT / "docs/screenshots" / name).is_file(), name)
 
     def test_readme_is_english(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

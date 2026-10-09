@@ -94,6 +94,72 @@ OPTION_ROWS = [
     ("FRAME COUNTER", 48, 416, 864, 34, "OFF  KEEPS THE SCREEN CLEAN"),
 ]
 
+# The co-op screen uses the same boxed rows, one row lower down for each one.
+COOP_ROWS = [
+    ("GAME", 48, 336, 864, 34, "CHEX QUEST 1  READY"),
+    ("MODE", 48, 376, 864, 34, "HOST THIS GAME  THE OTHERS JOIN YOU"),
+    ("CONSOLES", 48, 416, 864, 34, "2  THIS CONSOLE AND ONE OTHER"),
+]
+COOP_JOIN_ROW = ("JOIN", 48, 456, 864, 34, "192.<168>.0.42")
+
+COOP_HOSTING_ROWS = COOP_ROWS + [
+    ("JOIN", 48, 456, 864, 34, "NOT NEEDED WHILE THIS CONSOLE HOSTS"),
+]
+COOP_JOINING_ROWS = COOP_ROWS + [COOP_JOIN_ROW]
+
+
+def coop_screen(rows: list, mode_line: str, address: str, hint: str,
+                selected: str = "GAME") -> Canvas:
+    """Draws the CO-OP screen with the same calls and coordinates as the port."""
+    canvas = Canvas()
+    canvas.rect(0, 0, WIDTH, HEIGHT, BG)
+    canvas.rect(0, 0, WIDTH, 64, BAR)
+    canvas.rect(0, 63, WIDTH, 2, GOLD)
+    canvas.text(28, 18, "CO-OP", GOLD, 3)
+    canvas.text_right(WIDTH - 28, 26, "CHEX QUEST COLLECTION", DIM)
+
+    canvas.text(48, 88, "ON THE SAME WI-FI", GOLD)
+    canvas.rect(48, 112, 400, 2, GOLD_DIM)
+    for y, string in [
+        (130, "THIS CONSOLE AND THE OTHERS"), (152, "PLAY ONE GAME TOGETHER."),
+        (174, "EVERY CONSOLE NEEDS THE"), (196, "SAME GAME FILES, AND THE"),
+        (218, "HOST REFUSES THE OTHERS"), (240, "IF THEY DO NOT MATCH."),
+    ]:
+        canvas.text(48, y, string, TEXT)
+    canvas.text(48, 262, "THE HOST STARTS AS SOON AS", GOLD_DIM)
+    canvas.text(48, 284, "THE CHOSEN NUMBER IS HERE.", GOLD_DIM)
+
+    canvas.text(520, 88, "THIS CONSOLE", GOLD)
+    canvas.rect(520, 112, 400, 2, GOLD_DIM)
+    canvas.text(520, 130, address, READY)
+    canvas.text(520, 152, "PORT 2342", TEXT)
+    for y, string in [(174, mode_line[0]), (196, mode_line[1])]:
+        canvas.text(520, y, string, TEXT)
+    canvas.text(520, 218, "TURN WI-FI ON BEFORE", GOLD_DIM)
+    canvas.text(520, 240, "STARTING, OR THERE IS", GOLD_DIM)
+    canvas.text(520, 262, "NOTHING TO CONNECT TO.", GOLD_DIM)
+
+    canvas.text(48, 316, "CO-OP", GOLD)
+    canvas.text_right(WIDTH - 48, 316, "THEY APPLY WHEN X STARTS A GAME", DIM)
+    for label, x, y, width, height, value in rows:
+        chosen = label == selected
+        border = GOLD if chosen else GOLD_DIM
+        canvas.rect(x, y, width, height, PANEL if chosen else BAR)
+        canvas.rect(x, y, width, 2, border)
+        canvas.rect(x, y + height - 2, width, 2, border)
+        canvas.rect(x, y, 2, height, border)
+        canvas.rect(x + width - 2, y, 2, height, border)
+        canvas.text(x + 20, y + 10, label, WHITE if chosen else TEXT)
+        canvas.text(x + 250, y + 10, value, READY if chosen else DIM)
+        if chosen and hint:
+            canvas.text_right(x + width - 20, y + 10, hint, GOLD_DIM)
+
+    canvas.rect(0, 496, WIDTH, HEIGHT - 496, BAR)
+    canvas.rect(0, 494, WIDTH, 2, GOLD_DIM)
+    canvas.text(28, 514, "UP/DOWN: ROW   LEFT/RIGHT: VALUE   L/R: PART", WHITE)
+    canvas.text_right(WIDTH - 28, 514, "X: PLAY   START: GO BACK", DIM)
+    return canvas
+
 
 def options_screen() -> Canvas:
     """Draws the OPTIONS screen with the same calls and coordinates as the port."""
@@ -158,7 +224,7 @@ def check_layout(canvas: Canvas) -> None:
         for x2, y2, w2, h2, second in canvas.texts[i + 1:]:
             if x1 < x2 + w2 and x2 < x1 + w1 and y1 < y2 + h2 and y2 < y1 + h1:
                 problems.append(f"{first!r} overlaps {second!r}")
-    for label, x, y, width, height, _value in OPTION_ROWS:
+    for label, x, y, width, height, _value in OPTION_ROWS + COOP_HOSTING_ROWS + COOP_JOINING_ROWS:
         for x1, y1, w1, h1, text in canvas.texts:
             if y1 >= y and y1 < y + height and y1 + h1 > y + height - 2:
                 problems.append(f"{text!r} touches the border of the {label} box")
@@ -168,11 +234,24 @@ def check_layout(canvas: Canvas) -> None:
 
 def main() -> None:
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    canvas = options_screen()
-    check_layout(canvas)
-    destination = OUTPUT / "options.png"
-    canvas.image.save(destination, format="PNG", optimize=True)
-    print(f"wrote {destination.relative_to(ROOT)}: {len(canvas.texts)} texts, no overlaps")
+    screens = {
+        "options.png": options_screen(),
+        # The co-op screen as it ships (hosting) and as it looks while an
+        # address is being typed on the other console.
+        "coop-host.png": coop_screen(
+            COOP_HOSTING_ROWS,
+            ("THE OTHERS TYPE THAT", "ADDRESS AND JOIN."),
+            "192.168.0.42", ""),
+        "coop-join.png": coop_screen(
+            COOP_JOINING_ROWS,
+            ("TYPE THE HOST ADDRESS", "IN THE JOIN ROW BELOW."),
+            "192.168.0.42", "L/R: PART", selected="JOIN"),
+    }
+    for name, canvas in screens.items():
+        check_layout(canvas)
+        canvas.image.save(OUTPUT / name, format="PNG", optimize=True)
+        print(f"wrote {(OUTPUT / name).relative_to(ROOT)}: "
+              f"{len(canvas.texts)} texts, no overlaps")
 
 
 if __name__ == "__main__":

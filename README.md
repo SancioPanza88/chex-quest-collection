@@ -18,6 +18,10 @@ The launcher is a proper menu now: it lists the three games plus a data-files ro
 |---|---|---|
 | ![Options screen: the control list with the boxed setting rows](docs/screenshots/options.png) | ![Hold L, R and Select to return to the launcher](docs/screenshots/return-to-launcher.png) | ![Quick saved confirmation](docs/screenshots/quick-save.png) |
 
+| Co-op: hosting | Co-op: joining |
+|---|---|
+| ![Co-op screen set to host, showing this console's address](docs/screenshots/coop-host.png) | ![Co-op screen set to join, with the address of the host](docs/screenshots/coop-join.png) |
+
 ## Download and install
 
 Get [`ChexQuestCollection.vpk`](https://github.com/SancioPanza88/chex-quest-collection/releases/latest/download/ChexQuestCollection.vpk) from Releases and install it on a homebrew-enabled PS Vita/PSTV (VitaShell, or any VPK installer).
@@ -76,6 +80,40 @@ The D-pad works in the Doom menus too, and every action is the same in all three
 Quick saves and loads confirm themselves with a short on-screen message ("QUICK SAVED", "QUICK LOADED", or "NO QUICK SAVE YET"). Saves and settings are kept separately for each game, under `ux0:/data/chexquestcollection/saves/<game>/` and `cfg/<game>/`.
 
 To leave a game and go back to the launcher, **hold L + R + SELECT for one second**: a progress bar fills up and the app reloads into the launcher.
+
+## Co-op
+
+Two to four consoles on the same Wi-Fi can play one game together. Press **R** in
+the launcher to open the **CO-OP** screen: pick the game, pick **HOST THIS GAME**
+or **JOIN ANOTHER CONSOLE**, say how many consoles are taking part, and when you
+are joining, type the address of the console that hosts. **X** starts.
+
+**UP/DOWN** chooses a row, **LEFT/RIGHT** changes its value. On the **JOIN** row
+the shoulders pick which part of the address is being changed (**L/R: PART**,
+shown as `192.<168>.0.1`) and left/right step that part up and down, repeating
+while held.
+
+The right column shows **this console's own address** and the port (**2342**).
+Read that address out to the other player, who types it into the **JOIN** row.
+The role, the game, the number of consoles and the address are all stored in
+`settings.cfg`, so an address is typed once: after that, a session is pressing
+**R** and then **X** on both consoles.
+
+- **The host starts the game by itself**, as soon as the number of consoles you
+  chose is connected. There is no key to press, so while it waits it shows how
+  many are in (`2 OF 2 CONSOLES IN`).
+- **Every console needs the same game files.** The host compares the checksums of
+  its data and refuses a console that does not match, instead of starting a game
+  that would fall out of step.
+- **Co-operative, not deathmatch**: one shared level, one player per console.
+  There is no second input on a single console, so this is a LAN feature.
+- **Nothing leaves your network.** The console hosts the game itself and the
+  others connect straight to its address: no account, no server, no listing.
+- Playing alone is exactly as before: leave the co-op screen with **START** and
+  the launcher starts a normal single player game.
+
+While waiting for the other consoles, **hold L + R + SELECT for a second** to go
+back to the launcher.
 
 ## Framerate
 

@@ -1558,16 +1558,29 @@ static void do_poll_input(void) {
       weapon_l_charge = 0;
       weapon_r_charge = 0;
     } else {
+      /* The port saves and loads straight from the pad instead of going
+         through the save menus, which are where the engine refuses both
+         during a netgame (m_menu.c). In a co-op game the other console is
+         playing the same level, so a save there is a desync waiting to
+         happen: the refusal is repeated here. */
       if (up && !up_was && quicksave_cooldown == 0) {
-        G_SaveGame(0, "VITA SAVE");
-        debug_logf("Quicksave slot 0, dir=%s", savegamedir ? savegamedir : "(null)");
-        show_toast("QUICK SAVED");
+        if (netgame) {
+          debug_log("Quicksave refused: netgame");
+          show_toast("NO SAVES IN A CO-OP GAME");
+        } else {
+          G_SaveGame(0, "VITA SAVE");
+          debug_logf("Quicksave slot 0, dir=%s", savegamedir ? savegamedir : "(null)");
+          show_toast("QUICK SAVED");
+        }
         quicksave_cooldown = TICRATE;
       }
       if (down && !down_was && quickload_cooldown == 0) {
-        char *path = P_SaveGameFile(0);
+        char *path = netgame ? NULL : P_SaveGameFile(0);
         FILE *save_file = path ? fopen(path, "rb") : NULL;
-        if (save_file) {
+        if (netgame) {
+          debug_log("Quickload refused: netgame");
+          show_toast("NO LOADS IN A CO-OP GAME");
+        } else if (save_file) {
           fclose(save_file);
           G_LoadGame(path);
           debug_logf("Quickload: %s", path);

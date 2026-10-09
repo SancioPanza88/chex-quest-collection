@@ -43,7 +43,7 @@ There is no local VitaSDK, so every build comes from CI. The contract tests in
 | Cheats menu | not started |
 | Arena mode | not started |
 | Resolution experiment (renderer at 640x400) | not started — see the note below |
-| Co-op prototype | not started — plan in `docs/COOP-PLAN.md` |
+| Co-op over the LAN (host/join screen, Vita UDP transport, netgame layer) | implemented on `v1.2-coop`, **needs two consoles to test** |
 
 ## Requested features and verdicts
 
@@ -53,7 +53,7 @@ There is no local VitaSDK, so every build comes from CI. The contract tests in
 | 60 fps | **Feasible, biggest engine job** | rendering is tic-paced at ~35 fps and the upscaler is software, both must change |
 | Higher resolution | **Feasible, compile-time only** | `SCREENWIDTH`/`SCREENHEIGHT` are compile-time; needs a performance measurement on hardware |
 | CapUnlocker | **Marginal** | it is not a clock unlocker (see below) |
-| Co-op multiplayer | **Risky, prototype only** | the whole networking layer is missing from this tree |
+| Co-op multiplayer | **Built, unverified on hardware** | the layer and the transport are in; two Vitas still have to prove it |
 | Arena mode, single player | **Feasible** | new game mode on the installed maps, no new data files |
 | Arena co-op | **Depends on co-op** | only after the network prototype holds |
 | Split-screen co-op on one Vita | **Not practical** | two views and two inputs on a 960x544 screen, and it doubles the render cost |
@@ -173,37 +173,47 @@ already requests 444 / 222 / 222 / 166, i.e. the maximum the official API
 allows, so a user-side overclock adds at most +13% CPU. It can be mentioned in
 the README as an optional tip, never as a requirement.
 
-## 5. Co-op multiplayer — the risky one
+## 5. Co-op multiplayer — built, still to be proved on two consoles
 
-This tree has **no networking at all**:
+The tree had **no networking at all** when this was scoped: `d_loop.c` kept the
+Chocolate Doom net calls behind `FEATURE_MULTIPLAYER`, and the sources they call
+(`net_client.c`, `net_server.c`, `net_loop.c`, `net_io.c`, `net_packet.c`,
+`net_structrw.c`, `net_query.c`, `net_sdl.c`) were absent. What is on
+`v1.2-coop` now:
 
-- `d_loop.c` contains the Chocolate Doom net calls, but they are inside
-  `#ifdef FEATURE_MULTIPLAYER`, which is never defined here.
-- `d_net.c` and the `net_client_connected` stub in `dummy.c:27` are present, and
-  the headers `net_client.h`, `net_server.h`, `net_loop.h`, `net_io.h`,
-  `net_packet.h`, `net_query.h`, `net_defs.h`, `net_structrw.h`… are still in the
-  tree, but the matching sources (`net_client.c`, `net_server.c`, `net_loop.c`,
-  `net_io.c`, `net_packet.c`, `net_structrw.c`, `net_query.c`, `i_net.c`,
-  `net_sdl.c`) are **absent**.
+1. The Chocolate Doom 2.3.0 netgame layer is vendored back — the version whose
+   headers this tree already carried — and compiled with `FEATURE_MULTIPLAYER`.
+2. `net_vita.c` is the UDP backend it talks to instead of `net_sdl.c`: SceNet
+   sockets, the same `net_module_t` interface, no SDL_net and no textscreen.
+3. `net_vita_glue.c` fills the three files the layer still calls and this tree
+   does not carry: the master-server search answers "nothing found" (a console
+   joins by address and advertises nothing), the dedicated server is refused,
+   and the waiting loop launches the game **by itself** once `-nodes` consoles
+   are connected, because a console has no key to press.
+4. The launcher has a co-op screen (**R**): game, host or join, how many
+   consoles, and the address to join, typed with the pad and remembered in
+   `settings.cfg`. It draws the wait screen while the others connect.
+5. WAD and DeHacked checksums are compared by the server, which refuses a
+   console whose data does not match — the desync there is the one that would
+   be hardest to debug later.
 
-To ship LAN co-op we would have to:
+What is left is the part that needs hardware, and it is the part that decides
+whether this ships: two consoles on one router, an actual level, both players
+moving, a level change, a disconnect. Nothing below has been observed, only
+compiled and checked by contract tests:
 
-1. Bring back the Chocolate Doom network layer (client, server, loop, io, packet
-   serialisation) and compile it with `FEATURE_MULTIPLAYER`.
-2. Write a UDP backend for it with SceNet (the SDL_net backend does not exist on
-   the Vita) — host and client on the same local network.
-3. Add a host/join UI, with "join by IP" typed through the Vita on-screen
-   keyboard dialog.
-4. Synchronise settings and WAD checksums between both consoles, and debug
-   desyncs — the part that eats the time, and it needs two Vitas on the desk.
-
-Estimate: the prototype alone is a multi-week job with a real chance of not
-being stable in time. Recommendation: keep it as an experimental branch, plan it
-for v1.3 if it is not ready, and do not promise it in v1.2.
+- that SceNet's sockets bind and resolve on the console with Wi-Fi on;
+- that the lockstep holds — the port's frame loop drives `TryRunTics()` from its
+  own 35 Hz wall clock, and with the default old sync the engine's clock is the
+  same wall clock, but `-newsync` would not be;
+- that the host's automatic launch fires on a real network;
+- that a joiner that is refused (wrong game, or the wrong address) says so
+  instead of hanging.
 
 Interaction to remember: cheats and network games exclude each other in vanilla
 (`!netgame` guard), so a co-op release would need a separate decision about
-cheats.
+cheats. The engine also carries no input for a second player on the same
+console; co-op means one console per player.
 
 ## 6. Arena mode — feasible in single player
 
@@ -315,12 +325,16 @@ refactor, to be done with the CI compiler in the loop, not blind.
 3. Arena mode, single player — new gameplay content.
 4. Resolution bump — a renderer refactor, not a constant change (see above).
    The picture modes were an attempt to fake it and did not survive review.
-5. Co-op — plan and file list in `docs/COOP-PLAN.md`; released only if it is
-   stable on two consoles, otherwise v1.3.
+5. Co-op — built on `v1.2-coop`; released only if two consoles play a level
+   together, otherwise it stays an experimental branch and v1.3 picks it up.
 
 ## Test plan
 
 - Every push builds a VPK in CI; the VPK is tested on real hardware.
+- Co-op needs a second pass before it can be called done: two consoles on the
+  same router, host and join, one level played to the exit, a level change, and
+  a console leaving mid-level. Until that happens, co-op is *built*, not
+  *working*.
 - `python -m unittest discover -s tests` must stay green (it checks the data
   file contract, the launcher artwork, the save paths and the README).
 - Before a public release: VPK validated as a zip, installed with VitaShell, the
