@@ -99,21 +99,43 @@ textscreen, so the wait is two things:
 - **CI** builds the whole thing into a VPK with VitaSDK, which is what proves
   the SceNet and netgame code compiles and links for the console.
 
+## First test on two consoles: what it found
+
+A PSTV hosting and a PS Vita 2000 joining, Chex Quest 3, build `43ed205`. What
+it proved and what it broke:
+
+- **The handshake works.** Both consoles got past the wait, the host launched by
+  itself, and the game came up on both — one console hosting and one joined is no
+  longer a theory. Pressing START reached the game's own menu, so the input and
+  the tic loop were running.
+- **The picture was wrong, and the cause was in the port, not in the netgame
+  layer.** The waiting screen draws with the launcher's own palette and left
+  `launcher_frame` set, so every frame of the game after it was translated
+  through the launcher table instead of the game's. Black stayed black (the
+  screen the player saw) and everything else became the RGB332 expansion of a
+  palette index that means nothing to the game (the mess seen after START). One
+  flag, cleared in `VITA_NetWaitScreen()` now, and a contract test that keeps it
+  cleared.
+- **Typing the address was the clunky part.** The first three parts of it are now
+  taken from this console's own address before anything was ever typed, and
+  choosing to join leaves the selection on the address row.
+
 ## What is left, and it needs hardware
 
-None of the following has been observed; it has only been compiled and checked by
-contract tests. Until these are answered, co-op is *built*, not *working*:
+Observed on two consoles so far: the sockets come up with Wi-Fi on, two consoles
+connect, the host launches the game by itself, and both enter it.
 
-- that `sceNetInit` and the sockets work with Wi-Fi on, and what happens when the
-  console is offline (the co-op screen should read `NO WI-FI ADDRESS` rather than
-  hang);
-- that the handshake completes: connect, checksum exchange, launch;
-- **that the lockstep holds.** The port's frame loop drives `TryRunTics()` from
-  its own 35 Hz wall clock. With the engine's default old sync that is the same
-  clock the engine uses, but `-newsync` (not passed by the launcher) would need
-  the adjusted clock instead;
-- that the automatic launch fires on a real network, and that a refused console
-  (wrong game, or the wrong address) says so instead of hanging;
+Still to be seen, and the next test has to answer these:
+
+- **whether the two consoles stay in step inside the level.** The first test
+  could not tell, because the picture was unreadable; this is the first thing to
+  look at now that it is not.
+- **whether the lockstep holds at all.** The port's frame loop drives
+  `TryRunTics()` from its own 35 Hz wall clock. With the engine's default old sync
+  that is the same clock the engine uses, but `-newsync` (not passed by the
+  launcher) would need the adjusted clock instead.
+- that a console which is refused — wrong game, or the wrong address — is told so,
+  instead of waiting for a game that never starts;
 - input delay on the 60 fps path: lockstep is one tic (about 28 ms) plus the
   round trip, and 35 fps classic is the mode to compare against;
 - what a console leaving mid-level does to the others. The server times a silent

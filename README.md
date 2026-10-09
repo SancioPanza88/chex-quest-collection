@@ -91,7 +91,9 @@ are joining, type the address of the console that hosts. **X** starts.
 **UP/DOWN** chooses a row, **LEFT/RIGHT** changes its value. On the **JOIN** row
 the shoulders pick which part of the address is being changed (**L/R: PART**,
 shown as `192.<168>.0.1`) and left/right step that part up and down, repeating
-while held.
+while held. **The first three parts come from this console's own address**, which
+is what a home router hands out, so usually only the last part has to be typed —
+and only once: the address is remembered from then on.
 
 The right column shows **this console's own address** and the port (**2342**).
 Read that address out to the other player, who types it into the **JOIN** row.
