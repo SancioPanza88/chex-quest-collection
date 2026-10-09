@@ -38,10 +38,12 @@ There is no local VitaSDK, so every build comes from CI. The contract tests in
 | 60 fps frame loop, interpolated view, cheaper upscaler | implemented on `v1.2-dev`, **needs a test on hardware** |
 | Interpolation of things (monsters, projectiles, items) and of the weapon | implemented, **needs a test on hardware** |
 | Framerate option (SELECT → OPTIONS, saved in `settings.cfg`) | implemented |
+| Picture modes: sharp, smoothed rows, boxed 2x (SELECT → OPTIONS) | implemented on `v1.2-dev`, **needs a test on hardware** |
+| 30 fps rate and automatic speed guard | implemented, **needs a test on hardware** |
 | Cheats menu | not started |
 | Arena mode | not started |
-| Resolution experiment | not started |
-| Co-op prototype | not started |
+| Resolution experiment (renderer at 640x400) | not started — see the note below |
+| Co-op prototype | not started — plan in `docs/COOP-PLAN.md` |
 
 ## Requested features and verdicts
 
@@ -273,19 +275,46 @@ and went). There are two framebuffers now, exchanged at the vertical blank in
 buffer on the display is never touched. If the second allocation ever fails the
 port keeps working with one buffer, exactly as before.
 
-The options screen is a menu instead of a line of text: two boxed rows
-(FRAMERATE, FRAME COUNTER), UP/DOWN to choose, X or left/right to change, and
-the selected row is highlighted with a gold border and a value box. The frame
-counter is measured once per second from the frames the port really presented,
-and it is stored in `settings.cfg` next to the framerate.
+The options screen is a menu instead of a line of text: four boxed rows
+(FRAMERATE, PICTURE, AUTO SPEED, FRAME COUNTER), UP/DOWN to choose, X or
+left/right to change, and the selected row is highlighted with a gold border
+and a value box. The frame counter is measured once per second from the frames
+the port really presented, and it is stored in `settings.cfg` next to the
+framerate, the picture mode and the guard switch.
+
+The picture modes are three ways the 320x200 picture reaches the 960x544
+panel, all inside the port's blitter: `SHARP` (nearest, as before), `SMOOTH`
+(each source row averaged with the row under it, which is what removes the
+uneven row heights of the 2.72x stretch as bands while turning) and `BOX`
+(exactly twice the size, centred, every game pixel a clean 2x2 square). The
+launcher keeps the full panel mapping whatever the game mode is, because its
+artwork was baked for the whole screen.
+
+The 30 fps rate and the guard make the 60 fps mode honest: a frame that misses
+its vertical blank is paced to the next one, so a scene that does not fit turns
+into an uneven 30 anyway. The guard measures the presented frames and, after
+two whole seconds below 55 fps, drops to a clean 30 with a toast on screen,
+leaving the saved choice alone. A second in which the loop barely ran — a level
+load, a wipe — is not counted.
+
+### Why a real resolution bump is a renderer refactor
+
+`SCREENWIDTH`/`SCREENHEIGHT` are compile-time constants (320x200) and the
+renderer strides by them everywhere. Raising them compiles, but every 2D
+drawing coordinate in the engine is in 320x200 space, so the status bar, the
+menus, the intermission, the finale and the automap all land in the wrong place
+until the 2D layer is scaled. Doing it properly means a maximum-size array and
+a runtime screen width plus a scaling choke point in `v_video.c`: a real
+refactor, to be done with the CI compiler in the loop, not blind.
 
 ## Proposed v1.2 scope
 
 1. Cheats menu (launcher + in-game) — small, self-contained.
 2. 60 fps option and a cheaper upscaler — the headline feature.
 3. Arena mode, single player — new gameplay content.
-4. Resolution bump — ship it only if it holds the frame budget.
-5. Co-op — prototype branch, released only if it is stable, otherwise v1.3.
+4. Resolution bump — a renderer refactor, not a constant change (see above).
+5. Co-op — plan and file list in `docs/COOP-PLAN.md`; released only if it is
+   stable on two consoles, otherwise v1.3.
 
 ## Test plan
 
