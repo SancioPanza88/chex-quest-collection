@@ -898,6 +898,29 @@ static void coop_address_plain(char *out, size_t size)
              coop_host[2], coop_host[3]);
 }
 
+/* Before an address was ever typed, the console to join is almost always on
+   this console's own network: a home router hands out addresses that share the
+   first three parts. Those are filled in from what this console has, so only
+   the last part is left to type. A stored address is never touched. */
+static void coop_adopt_local_network(const char *local)
+{
+    unsigned int a, b, c, d;
+
+    if (coop_host[0] != 192 || coop_host[1] != 168
+     || coop_host[2] != 0 || coop_host[3] != 1) {
+        return;
+    }
+    if (!local || !local[0])
+        return;
+    if (sscanf(local, "%u.%u.%u.%u", &a, &b, &c, &d) != 4)
+        return;
+    if (a > 255 || b > 255 || c > 255)
+        return;
+    coop_host[0] = (unsigned char)a;
+    coop_host[1] = (unsigned char)b;
+    coop_host[2] = (unsigned char)c;
+}
+
 /* The part the shoulders picked is the one left and right change. */
 static void coop_address_marked(char *out, size_t size)
 {
@@ -938,6 +961,10 @@ static int coop_set(int row, int right)
             if (wanted == coop_mode)
                 return 0;
             coop_mode = wanted;
+            /* Choosing to join the other console is the moment the address
+               becomes the thing to type, so the selection goes there. */
+            if (coop_mode == COOP_JOINING)
+                coop_selected = COOP_ROW_JOIN;
         }
         break;
     case COOP_ROW_CONSOLES:
@@ -1067,13 +1094,16 @@ static void show_coop_screen(void)
     int redraw = 1;
 
     coop_ready = 0;
-    coop_selected = 0;
     coop_repeat = 0;
     /* Say the address this console has right now, so it can be read out to
        the other player. Bringing the network up here is also what turns an
        offline console into a clear "no Wi-Fi" line instead of a hang. */
     NET_VITA_GetLocalAddress(coop_local_address, sizeof(coop_local_address));
+    coop_adopt_local_network(coop_local_address);
     debug_logf("coop: local address '%s'", coop_local_address);
+    /* Returning to the screen means the last session's choice is on the row
+       that was left, which is the one about to be changed again. */
+    coop_selected = coop_mode == COOP_JOINING ? COOP_ROW_JOIN : COOP_ROW_GAME;
 
     sceCtrlPeekBufferPositive(0, &pad, 1);
     previous = pad; /* the button that opened the screen must not act at once */
@@ -1157,6 +1187,10 @@ void VITA_NetWaitScreen(int connected, int expected, int is_controller)
 {
     /* Held for a second, like the in-game way back to the launcher. */
     static int stop_hold = 0;
+    /* This screen is drawn in the launcher's own palette, and the game that
+       starts right after it must not be: the flag is cleared again before the
+       wait returns, or every colour of the title screen and of the menus is
+       looked up in the launcher table and comes out as garbage. */
     char line[48];
     SceCtrlData pad;
     int x;
@@ -1204,6 +1238,7 @@ void VITA_NetWaitScreen(int connected, int expected, int is_controller)
     draw_menu_text(10, 176, "HOLD L+R+SELECT TO GO BACK", L_COL_TEXT_DIM);
 
     I_FinishUpdate();
+    launcher_frame = 0;
 }
 
 /* ------------------------------------------------------------------ *

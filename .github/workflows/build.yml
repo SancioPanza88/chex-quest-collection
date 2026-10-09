@@ -16,13 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The contract tests read the sources and check what they promise - the
-      # launcher screens, the netgame arguments, the settings file - and one of
-      # them reads the artwork with Pillow. They run before the build so a
-      # broken contract fails the run even when the C still compiles.
+      # launcher screens, the netgame arguments, the settings file, and the
+      # headers of the artwork. They need nothing but the standard library, so
+      # they run in this container as they are, before the compile.
       - name: Contract tests
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow
-          python3 -m unittest discover -s tests -v
+        run: python3 -m unittest discover -s tests -v
       - name: Configure
         run: cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$VITASDK/share/vita.toolchain.cmake"
       - name: Build VPK

@@ -1,7 +1,23 @@
 from pathlib import Path
+import struct
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+PNG_PALETTE = 3  # the colour type of an indexed PNG, which PIL calls "P"
+
+
+def png_header(path: Path) -> tuple[int, int, int]:
+    """Width, height and colour type straight out of the PNG header.
+
+    Read here instead of through Pillow: these tests run in the build
+    container, which has Python and nothing else installed.
+    """
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        raise AssertionError(f"{path} is not a PNG with a header")
+    width, height, _depth, colour, _comp, _filter, _interlace = struct.unpack(
+        ">IIBBBBB", data[16:29])
+    return width, height, colour
 
 
 class CollectionContractTests(unittest.TestCase):
@@ -31,8 +47,6 @@ class CollectionContractTests(unittest.TestCase):
             self.assertIn(f"cfg/{game}/", source)
 
     def test_required_vita_artwork_is_indexed_png(self):
-        from PIL import Image
-
         expected = {
             "sce_sys/icon0.png": (128, 128),
             "sce_sys/livearea/contents/bg.png": (840, 500),
@@ -40,9 +54,9 @@ class CollectionContractTests(unittest.TestCase):
         }
         for filename, size in expected.items():
             with self.subTest(filename=filename):
-                with Image.open(ROOT / filename) as image:
-                    self.assertEqual(image.size, size)
-                    self.assertEqual(image.mode, "P")
+                width, height, colour = png_header(ROOT / filename)
+                self.assertEqual((width, height), size)
+                self.assertEqual(colour, PNG_PALETTE)
 
     def test_launcher_uses_supplied_background_and_game_logos(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
@@ -353,6 +367,38 @@ class CollectionContractTests(unittest.TestCase):
         # A console that cannot play the chosen game is told which one, instead
         # of being sent into a fatal error by the engine.
         self.assertIn("if (launcher_game_ready(coop_game)) {", source)
+
+    def test_the_wait_screen_gives_the_game_its_palette_back(self):
+        # Found on two consoles: after the wait the game was presented through
+        # the launcher's colour table, so the title screen came out black and
+        # the menu a mess of wrong colours. The wait draws in that table and
+        # has to hand the game back the game's own one.
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        self.assertIn("lut = launcher_frame ? launcher_lut : cmap;", source)
+        wait = source.split("void VITA_NetWaitScreen(")[1].split("\n}\n")[0]
+        self.assertIn("launcher_frame = 1;", wait)
+        self.assertIn("I_FinishUpdate();", wait)
+        self.assertIn("launcher_frame = 0;", wait.split("I_FinishUpdate();")[1])
+        # The launcher itself clears it in the same way before a game starts.
+        self.assertIn("menu_music_active = 0;\n    launcher_frame = 0;", source)
+
+    def test_the_join_address_only_needs_its_last_part_typed(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        # A home router hands out addresses that share the first three parts,
+        # so what this console already has fills those in and the other console
+        # is typed two digits at a time.
+        self.assertIn("static void coop_adopt_local_network(const char *local)", source)
+        self.assertIn("coop_adopt_local_network(coop_local_address);", source)
+        adopt = source.split("static void coop_adopt_local_network(const char *local)")[1].split("\n}\n")[0]
+        # ... and an address that was typed and stored is never touched.
+        self.assertIn("if (coop_host[0] != 192 || coop_host[1] != 168", adopt)
+        self.assertIn('sscanf(local, "%u.%u.%u.%u", &a, &b, &c, &d) != 4', adopt)
+        self.assertIn("coop_host[2] = (unsigned char)c;", adopt)
+        # Choosing to join leaves the selection on the address row, which is
+        # the next thing to do.
+        mode = source.split("case COOP_ROW_MODE:")[1].split("break;")[0]
+        self.assertIn("coop_selected = COOP_ROW_JOIN;", mode)
+        self.assertIn("coop_selected = coop_mode == COOP_JOINING ? COOP_ROW_JOIN : COOP_ROW_GAME;", source)
 
     def test_coop_arguments_carry_the_role_the_game_and_the_port(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
