@@ -307,7 +307,13 @@ void D_StartGameLoop(void)
     lasttime = GetAdjustedTime() / ticdup;
 }
 
-#if ORIGCODE
+/* The start handshake belongs to the netgame, not to the original Doom code:
+   this tree's config.h has ORIGCODE undefined (doomgeneric turned it off), so
+   guarding this with ORIGCODE compiled it out and left a co-op game that
+   connected, started a level and then never exchanged a single tic: the black
+   screen two consoles reported. FEATURE_MULTIPLAYER is what is really being
+   asked about here. */
+#ifdef FEATURE_MULTIPLAYER
 //
 // Block until the game start message is received from the server.
 //
@@ -340,7 +346,7 @@ static void BlockUntilStart(net_gamesettings_t *settings,
 void D_StartNetGame(net_gamesettings_t *settings,
                     netgame_startup_callback_t callback)
 {
-#if ORIGCODE
+#ifdef FEATURE_MULTIPLAYER
     int i;
 
     offsetms = 0;

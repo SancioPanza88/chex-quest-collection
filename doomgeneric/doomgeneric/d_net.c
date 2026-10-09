@@ -18,6 +18,7 @@
 //
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "doomfeatures.h"
 
@@ -203,9 +204,13 @@ static void InitConnectData(net_connect_data_t *connect_data)
 
     W_Checksum(connect_data->wad_sha1sum);
 
-#if ORIGCODE
-    DEH_Checksum(connect_data->deh_sha1sum);
-#endif
+    // This tree carries no DEH checksum routine (the one Chocolate Doom has
+    // lives in code doomgeneric left out), so the field is sent as zeroes by
+    // every console and the comparison is over the WAD directory - which is
+    // the file the two consoles have to agree on. Zeroing it here also keeps
+    // the packet deterministic instead of sending whatever was on the stack.
+
+    memset(connect_data->deh_sha1sum, 0, sizeof(connect_data->deh_sha1sum));
 
     // Are we playing with the Freedoom IWAD?
 

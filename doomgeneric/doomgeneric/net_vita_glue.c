@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "doomtype.h"
 #include "i_system.h"
@@ -113,6 +114,11 @@ void NET_Query_MasterResponse(net_packet_t *packet)
    count means the server has not answered yet. */
 extern void VITA_NetWaitScreen(int connected, int expected, int is_controller);
 
+/* Also drawn by the port, for the two ways a co-op session can fail before it
+   starts. It shows the two lines and hands the launcher back, so a failed
+   co-op leaves a console the player can use instead of a dead level. */
+extern void VITA_NetFailScreen(const char *line1, const char *line2);
+
 /* How many consoles the game waits for. The desktop ports start a netgame when
    the controller presses a key in the waiting window; a console has no keyboard
    to press, so the controller launches by itself as soon as this many have
@@ -147,9 +153,27 @@ void NET_WaitForLaunch(void)
         NET_CL_Run();
         NET_SV_Run();
 
+        /* The wait can end in two ways: the launch arrived, or the console on
+           the other end is gone (its connection timed out). The waiting data
+           stops being refreshed at that point, so the loop has to leave here:
+           falling through used to start a network game on this console alone,
+           with no other player in it and no way back to the launcher. */
         if (!net_client_connected)
         {
-            I_Error("Lost connection to server");
+            VITA_NetFailScreen("LOST THE OTHER CONSOLE",
+                               "THE GAME DID NOT START");
+        }
+
+        /* Every console has to be playing the same data. The waiting data
+           carries the controller's WAD digest, so a console that does not
+           match it is told so before the game starts instead of desyncing
+           once it has. */
+        if (net_client_received_wait_data
+         && memcmp(net_local_wad_sha1sum, net_client_wait_data.wad_sha1sum,
+                   sizeof(sha1_digest_t)) != 0)
+        {
+            VITA_NetFailScreen("DIFFERENT GAME DATA",
+                               "SAME FILES ON BOTH");
         }
 
         /* Only the controller may launch the game, and it does so once. */
@@ -164,6 +188,14 @@ void NET_WaitForLaunch(void)
                            net_client_wait_data.is_controller);
 
         I_Sleep(10);
+    }
+
+    /* Net's belt and braces: the loop above only ends in the launch or in the
+       lost connection, and the lost connection never continues past here. */
+    if (!net_client_connected)
+    {
+        VITA_NetFailScreen("LOST THE OTHER CONSOLE",
+                           "THE GAME DID NOT START");
     }
 }
 

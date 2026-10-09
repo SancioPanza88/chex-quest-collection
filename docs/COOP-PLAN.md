@@ -129,26 +129,83 @@ it proved and what it broke:
   taken from this console's own address before anything was ever typed, and
   choosing to join leaves the selection on the address row.
 
+## Second test on two consoles: the black screen
+
+A PSTV and a PS Vita 2000, build `03a29c4`, Chex Quest 3. The two consoles
+connected, the wait ended and the game came up — on a **black screen**, on both.
+The menu opened over it (START), **NEW GAME** answered *you can't start a new
+game while you're in a network game*, and nothing else the pad did made any
+difference. When the host left, the other console stayed on the same black
+screen; when the joining console left, the host could play normally. That last
+observation is the one that identified the fault.
+
+**The cause was not in the netgame layer at all: the handshake that starts a
+netgame had been compiled out.** `D_StartNetGame()` in `d_loop.c` — the function
+that sends the client's `GAMESTART`, waits for the server's answer and reads the
+real player numbers — was wrapped in `#if ORIGCODE`. Chocolate Doom defines
+`ORIGCODE`, but this tree's `config.h` (doomgeneric's) has it **undefined**, so
+the whole handshake fell into the `#else` branch. What that branch does is start
+a one-player game without telling the server anything:
+
+- the server never received the controller's `GAMESTART`, so it never entered
+  its in-game state and never sent a single tic (`SERVER_IN_GAME` is what
+  `NET_SV_PumpSendQueue` is reached from);
+- with no tic data, `recvtic` stayed 0, `GetLowTic()` stayed 0 and `TryRunTics()`
+  ran **no tics at all**: `D_Display()` skips `R_RenderPlayerView()` while
+  `gametic == 0`, which is exactly a black level, while the menu is drawn on top
+  of it by the engine's own menu code;
+- `netgame` was still true, so the engine refused NEW GAME — correctly, but the
+  refusal was the only thing the player could reach;
+- when the joining console left, the server's client-disconnect path called
+  `NET_SV_GameEnded()`, which disconnected the host's own loopback client too:
+  the host's client stopped being connected, `GetLowTic()` stopped being limited
+  by `recvtic`, and the tics the host had been holding back ran. That is why the
+  host could play alone the moment the other console was gone.
+
+The fix is one word wide: the two blocks now belong to
+`FEATURE_MULTIPLAYER` — the feature they actually depend on — instead of
+`ORIGCODE`, so a co-op build compiles them in. A contract test now fails if
+`#if ORIGCODE` comes back into `d_loop.c`, and normalises the line endings to
+find the block.
+
+Three smaller faults were found around it and fixed in the same pass:
+
+- **A console whose wait ended because the other console vanished started a
+  game on its own.** `net_waiting_for_launch` goes false on a lost connection
+  exactly as it does on a real launch, and the port's waiting loop fell straight
+  through into the game. It now says so (`LOST THE OTHER CONSOLE`) and hands the
+  launcher back.
+- **The game-data check the README promised was not implemented.** The waiting
+data carries the controller's WAD SHA1 — Chocolate Doom's `net_gui.c` compares
+it in a textscreen window, which the Vita has no equivalent of. The port now
+compares it itself and refuses to start with `DIFFERENT GAME DATA`. The DEH
+half of that comparison cannot be done in this tree (`DEH_Checksum()` is one of
+the functions doomgeneric left out), so `d_net.c` sends a zeroed DEH digest
+deliberately instead of uninitialised stack.
+- **A co-op game that failed while it was starting closed the application.**
+`I_Error` on this port logs, waits two seconds and exits, which on a console
+looks like a crash. When the session was started from the co-op screen it now
+shows `CO-OP COULD NOT START` with a way back to the launcher instead.
+
 ## What is left, and it needs hardware
 
-Observed on two consoles so far: the sockets come up with Wi-Fi on, two consoles
-connect, the host launches the game by itself, and both enter it.
+Build `03a29c4` proves the sockets, the handshake, the automatic launch and the
+data checksums; the build after this fix is the first one that can actually run
+a level, and the next test on hardware has to answer:
 
-Still to be seen, and the next test has to answer these:
-
-- **whether the two consoles stay in step inside the level.** The first test
-  could not tell, because the picture was unreadable; this is the first thing to
-  look at now that it is not.
+- **whether the two consoles stay in step inside the level.** This is the first
+  thing to look at: nothing before this build ever exchanged a tic.
 - **whether the lockstep holds at all.** The port's frame loop drives
   `TryRunTics()` from its own 35 Hz wall clock. With the engine's default old sync
   that is the same clock the engine uses, but `-newsync` (not passed by the
   launcher) would need the adjusted clock instead.
-- that a console which is refused — wrong game, or the wrong address — is told so,
-  instead of waiting for a game that never starts;
 - input delay on the 60 fps path: lockstep is one tic (about 28 ms) plus the
   round trip, and 35 fps classic is the mode to compare against;
 - what a console leaving mid-level does to the others. The server times a silent
-  client out and broadcasts that it disconnected, so the remaining players should
-  play on, but the port's "return to launcher" reloads the app without running
-  the engine's exit handlers, so the other consoles only learn about it from that
-  timeout.
+  client out (`CONNECTION_TIMEOUT_LEN`, 30 s) and broadcasts that it
+  disconnected, so the remaining players should play on, but the port's "return
+  to launcher" reloads the app without running the engine's exit handlers, so
+  the other consoles only learn about it from that timeout — and a console whose
+  host left is stuck waiting for tics for those same 30 seconds before it
+  carries on alone. A shorter timeout is the obvious knob if that feels long on
+  hardware, but it has to leave room for a level load on both sides at once.

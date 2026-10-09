@@ -1242,6 +1242,54 @@ void VITA_NetWaitScreen(int connected, int expected, int is_controller)
 }
 
 /* ------------------------------------------------------------------ *
+ * A co-op session that cannot start                                 *
+ *                                                                     *
+ * Shown when the other console disappears while everyone is still      *
+ * waiting, or when the two consoles are not running the same game      *
+ * data. It says what happened and hands the launcher back: a console   *
+ * in someone's hands should not be left on a dead level, and it        *
+ * should not close the application without a word either.              *
+ * ------------------------------------------------------------------ */
+
+void VITA_NetFailScreen(const char *line1, const char *line2)
+{
+    SceCtrlData pad;
+    uint32_t deadline;
+
+    debug_logf("co-op: cannot start (%s / %s)",
+               line1 ? line1 : "", line2 ? line2 : "");
+
+    launcher_frame = 1;
+    launcher_rect(0, 0, SCREENWIDTH, SCREENHEIGHT, L_RGB(26, 10, 14));
+    launcher_rect(0, 0, SCREENWIDTH, 32, L_RGB(48, 16, 20));
+    launcher_rect(0, 31, SCREENWIDTH, 2, L_COL_GOLD_DIM);
+    draw_menu_text_scaled(10, 8, "CO-OP", L_COL_GOLD, 2);
+    draw_menu_text_right(SCREENWIDTH - 10, 12, "CHEX QUEST COLLECTION",
+                         L_COL_TEXT_DIM, 1);
+    draw_menu_text_scaled(10, 64, line1 ? line1 : "", L_COL_WHITE, 2);
+    if (line2 && line2[0])
+        draw_menu_text_scaled(10, 92, line2, L_COL_WHITE, 2);
+    draw_menu_text(10, 150, "CHECK WI-FI AND THE ADDRESS, THEN TRY AGAIN.",
+                   L_COL_TEXT);
+    draw_menu_text(10, 168, "PRESS X TO GO BACK TO THE LAUNCHER.",
+                   L_COL_TEXT_DIM);
+    I_FinishUpdate();
+    launcher_frame = 0;
+
+    /* Waits for X, but not forever: the launcher has to come back even if
+       nobody is holding the console. */
+    deadline = get_ms() + 15000;
+    while (get_ms() < deadline) {
+        sceCtrlPeekBufferPositive(0, &pad, 1);
+        if (pad.buttons & SCE_CTRL_CROSS)
+            break;
+        sceKernelDelayThread(16000);
+    }
+
+    return_to_launcher();
+}
+
+/* ------------------------------------------------------------------ *
  * In-game overlays: quick save/load feedback and the launcher shortcut *
  * ------------------------------------------------------------------ */
 
@@ -2393,6 +2441,15 @@ void I_Error(const char *error, ...) {
   va_end(a);
   debug_logf("I_Error: %s", buf);
   sfx_running = 0;
+  /* A co-op game that fails while it is starting (no answer from the other
+     console, a connection lost during the handshake) has to say so and give
+     the launcher back. Closing the application, which is what the port used
+     to do, looks like a crash when the player is holding a console. */
+  if (coop_ready) {
+    menu_music_active = 0;
+    launcher_frame = 0;
+    VITA_NetFailScreen("CO-OP COULD NOT START", "BACK TO THE LAUNCHER");
+  }
   sceKernelDelayThread(2000000); /* 2s pause so log flushes */
   sceKernelExitProcess(0);
 }

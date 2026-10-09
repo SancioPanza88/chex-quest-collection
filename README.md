@@ -104,9 +104,13 @@ The role, the game, the number of consoles and the address are all stored in
 - **The host starts the game by itself**, as soon as the number of consoles you
   chose is connected. There is no key to press, so while it waits it shows how
   many are in (`2 OF 2 CONSOLES IN`).
-- **Every console needs the same game files.** The host compares the checksums of
-  its data and refuses a console that does not match, instead of starting a game
-  that would fall out of step.
+- **Every console needs the same game files.** The consoles compare the
+  checksums of their game data and refuse to start when they do not match,
+  instead of starting a game that would fall out of step: the console says
+  `DIFFERENT GAME DATA` and goes back to the launcher.
+- **A co-op game that cannot start says so.** If the other console leaves while
+  everyone is still waiting, the console shows `LOST THE OTHER CONSOLE` and
+  reloads into the launcher, instead of starting a game with nobody in it.
 - **Co-operative, not deathmatch**: one shared level, one player per console.
   There is no second input on a single console, so this is a LAN feature.
 - **The level is already running when you get there.** The host started it as

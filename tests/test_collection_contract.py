@@ -401,6 +401,71 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn("if (gamestate != oldgamestate && gamestate != GS_LEVEL)", engine)
         self.assertIn("if (autostart || netgame)", engine)
 
+    def test_the_coop_start_handshake_is_compiled_in(self):
+        # Found on two consoles: co-op connected, the wait ended, the level came
+        # up black and never ran a single tic. The handshake that starts a
+        # netgame (the GAMESTART exchange in d_loop.c) was guarded with
+        # "#if ORIGCODE", and this tree's config.h has ORIGCODE undefined -
+        # doomgeneric turned it off - so the whole handshake was compiled out:
+        # the server never entered its in-game state, so it never sent a tic,
+        # and both consoles sat on a frozen level. The handshake belongs to
+        # FEATURE_MULTIPLAYER, which this build does define.
+        engine = ROOT / "doomgeneric/doomgeneric"
+        # Normalised so the blocks can be split out by hand: these sources are
+        # checked in with CRLF endings.
+        loop = (engine / "d_loop.c").read_text(encoding="utf-8").replace("\r\n", "\n")
+        self.assertIn("#undef ORIGCODE", (engine / "config.h").read_text(encoding="utf-8"))
+        self.assertNotIn("#if ORIGCODE", loop)
+        wait = loop.split("void D_StartGameLoop(void)")[1].split("void D_StartNetGame(")[0]
+        self.assertIn("static void BlockUntilStart(net_gamesettings_t *settings,", wait)
+        self.assertIn("if (!net_client_connected)", wait)
+        guard = wait.find("#ifdef FEATURE_MULTIPLAYER")
+        block = wait.find("static void BlockUntilStart(")
+        closed = wait.find("#endif", block)
+        self.assertTrue(0 <= guard < block < closed,
+                        "BlockUntilStart must live inside the FEATURE_MULTIPLAYER block")
+        start = loop.split("void D_StartNetGame(net_gamesettings_t *settings,")[1]
+        live = start.split("#ifdef FEATURE_MULTIPLAYER")[1].split("#else")[0]
+        self.assertIn("NET_CL_StartGame(settings);", live)
+        self.assertIn("BlockUntilStart(settings, callback);", live)
+        self.assertIn("localplayer = settings->consoleplayer;", live)
+        # A build with multiplayer switched off keeps its short path.
+        self.assertIn("settings->num_players = 1;", start.split("#else")[1].split("#endif")[0])
+
+    def test_a_coop_game_that_never_started_says_so(self):
+        # Two ways a co-op session can end before it starts: the other console
+        # leaves while everyone is waiting, or the two consoles disagree about
+        # their game data. Neither may fall through into a game - the first
+        # used to start a network game on the remaining console alone, with no
+        # other player in it - and neither may close the application without a
+        # word, which is what a plain I_Error does on this port.
+        engine = ROOT / "doomgeneric/doomgeneric"
+        glue = (engine / "net_vita_glue.c").read_text(encoding="utf-8").replace("\r\n", "\n")
+        self.assertIn("extern void VITA_NetFailScreen(const char *line1, const char *line2);", glue)
+        wait = glue.split("void NET_WaitForLaunch(void)")[1].split("\n}\n")[0]
+        self.assertIn('VITA_NetFailScreen("LOST THE OTHER CONSOLE",', wait)
+        self.assertIn('"THE GAME DID NOT START");', wait)
+        # The data every console has to be running is compared before the game.
+        self.assertIn("net_local_wad_sha1sum", wait)
+        self.assertIn("net_client_wait_data.wad_sha1sum", wait)
+        self.assertIn('VITA_NetFailScreen("DIFFERENT GAME DATA",', wait)
+        self.assertIn('"SAME FILES ON BOTH");', wait)
+        self.assertIn("if (!net_client_connected)", wait)
+        # The digests that comparison reads are the ones the two consoles send.
+        net = (engine / "d_net.c").read_text(encoding="utf-8").replace("\r\n", "\n")
+        self.assertIn("W_Checksum(connect_data->wad_sha1sum);", net)
+        self.assertIn("memset(connect_data->deh_sha1sum, 0", net)
+        self.assertNotIn("#if ORIGCODE", net)
+        # The port draws the failure and hands the launcher back, and a co-op
+        # that fails while starting goes through the same screen.
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8").replace("\r\n", "\n")
+        fail = source.split("void VITA_NetFailScreen(const char *line1, const char *line2)")[1].split("\n}\n")[0]
+        self.assertIn("return_to_launcher();", fail)
+        self.assertIn("SCE_CTRL_CROSS", fail)
+        self.assertIn("if (coop_ready) {", source)
+        error = source.split("void I_Error(const char *error, ...)")[1].split("\n}")[0]
+        self.assertIn('VITA_NetFailScreen("CO-OP COULD NOT START"', error)
+
     def test_the_join_address_only_needs_its_last_part_typed(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
         # A home router hands out addresses that share the first three parts,

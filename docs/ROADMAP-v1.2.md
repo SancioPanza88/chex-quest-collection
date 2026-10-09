@@ -43,7 +43,7 @@ There is no local VitaSDK, so every build comes from CI. The contract tests in
 | Cheats menu | not started |
 | Arena mode | not started |
 | Resolution experiment (renderer at 640x400) | not started — see the note below |
-| Co-op over the LAN (host/join screen, Vita UDP transport, netgame layer) | implemented on `v1.2-coop`, **needs two consoles to test** |
+| Co-op over the LAN (host/join screen, Vita UDP transport, netgame layer) | implemented on `v1.2-coop`; two consoles found the start handshake compiled out (black level), fixed — **needs a re-test on hardware** |
 
 ## Requested features and verdicts
 
@@ -197,18 +197,27 @@ Chocolate Doom net calls behind `FEATURE_MULTIPLAYER`, and the sources they call
    console whose data does not match — the desync there is the one that would
    be hardest to debug later.
 
-What is left is the part that needs hardware, and it is the part that decides
-whether this ships: two consoles on one router, an actual level, both players
-moving, a level change, a disconnect. Nothing below has been observed, only
-compiled and checked by contract tests:
+The first two tests on hardware are recorded in `docs/COOP-PLAN.md` ("First test"
+and "Second test"): the sockets bind and resolve, two consoles connect, the host
+launches by itself, and the game data is checked — but the level came up black
+and never ran a tic. The netgame **start handshake** in `d_loop.c` was wrapped in
+`#if ORIGCODE`, and this tree's `config.h` has `ORIGCODE` undefined, so it was
+compiled out and the server never entered its in-game state. That is fixed: the
+handshake now belongs to `FEATURE_MULTIPLAYER`, a console whose wait ends because
+the other console left says so instead of starting a game alone, mismatched game
+data is refused before the game, and a co-op start that fails gives the launcher
+back instead of closing the application.
 
-- that SceNet's sockets bind and resolve on the console with Wi-Fi on;
-- that the lockstep holds — the port's frame loop drives `TryRunTics()` from its
-  own 35 Hz wall clock, and with the default old sync the engine's clock is the
-  same wall clock, but `-newsync` would not be;
-- that the host's automatic launch fires on a real network;
-- that a joiner that is refused (wrong game, or the wrong address) says so
-  instead of hanging.
+What is left is the part that needs hardware again:
+
+- whether the lockstep now holds — the port's frame loop drives `TryRunTics()`
+  from its own 35 Hz wall clock, and with the default old sync the engine's clock
+  is the same wall clock, but `-newsync` would not be;
+- whether an actual level plays, both players moving, a level change, a
+  disconnect;
+- input delay on the 60 fps path (one tic plus the round trip);
+- how long a console waits after the other one leaves (the connection timeout is
+  30 s).
 
 Interaction to remember: cheats and network games exclude each other in vanilla
 (`!netgame` guard), so a co-op release would need a separate decision about
