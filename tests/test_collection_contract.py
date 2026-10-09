@@ -111,10 +111,11 @@ class CollectionContractTests(unittest.TestCase):
         # A framerate picked by hand clears an automatic drop ...
         self.assertIn("static void fps_choose(int fps)", source)
         self.assertIn("auto_dropped = 0;", source)
-        # ... and the saved file keeps the choice, not the drop.
         self.assertIn("fps_active = fps_target;", source)
-        self.assertIn('"framerate=%d\\nauto=%d\\ncounter=%d\\n", fps_target', source)
-        self.assertNotIn('"framerate=%d\\nauto=%d\\ncounter=%d\\n", fps_active', source)
+        # ... and the saved file keeps the choice, not the drop.
+        self.assertIn('"framerate=%d\\nauto=%d\\ncounter=%d\\n"', source)
+        self.assertIn("fps_target, auto_speed, fps_counter_on,", source)
+        self.assertNotIn("fps_active, auto_speed", source)
 
     def test_things_weapon_and_sectors_are_interpolated(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
@@ -298,6 +299,107 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn('M_CheckParm("-server")', loop)
         self.assertIn('M_CheckParmWithArgs("-connect", 1)', loop)
         self.assertIn("if (addr != NULL)", loop)
+        # dummy.c used to stand in for the network layer that this build did
+        # not carry, so it defined two of its globals as well. Now that the
+        # real client is compiled in, both definitions would collide at link
+        # time unless the stub only fills the gap when the layer is absent.
+        dummy = (engine / "dummy.c").read_text(encoding="utf-8")
+        self.assertIn('#include "doomfeatures.h"', dummy)
+        stubs = dummy.split("#ifndef FEATURE_MULTIPLAYER")[1].split("#endif")[0]
+        self.assertIn("net_client_connected", stubs)
+        self.assertIn("boolean drone = false;", stubs)
+        self.assertIn("net_client_connected;", (engine / "net_client.c").read_text(encoding="utf-8"))
+
+    def test_coop_screen_starts_a_netgame_from_the_launcher(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        engine = ROOT / "doomgeneric/doomgeneric"
+        # A console has no keyboard, so the desktop waiting window's "press
+        # space to start" cannot exist: the controller launches the game by
+        # itself once the consoles it was told to wait for are in.
+        glue = (engine / "net_vita_glue.c").read_text(encoding="utf-8")
+        self.assertIn("static int ExpectedNodes(void)", glue)
+        self.assertIn('M_CheckParmWithArgs("-nodes", 1)', glue)
+        self.assertIn("NET_CL_LaunchGame();", glue)
+        self.assertIn("net_client_wait_data.is_controller", glue)
+        self.assertIn("connected >= wanted", glue)
+        # ... and the port draws that wait, since the engine has no text mode.
+        self.assertIn("extern void VITA_NetWaitScreen(", glue)
+        self.assertIn("VITA_NetWaitScreen(connected, wanted,", glue)
+        self.assertIn("void VITA_NetWaitScreen(int connected, int expected", source)
+        self.assertIn("%d OF %d CONSOLES IN", source)
+        # The launcher opens it with R, and it says so.
+        self.assertIn('"SELECT: OPTIONS   R: CO-OP"', source)
+        self.assertIn("if ((pad.buttons & SCE_CTRL_R) && !(previous.buttons & SCE_CTRL_R)) {", source)
+        self.assertIn("show_coop_screen();", source)
+        self.assertIn("if (coop_ready)", source)
+        # Four rows: which game, host or join, how many consoles, and the
+        # address to join.
+        self.assertIn("#define COOP_ROWS 4", source)
+        for label in ('"GAME"', '"MODE"', '"CONSOLES"', '"JOIN"'):
+            self.assertIn(label, source)
+        for value in ("HOST THIS GAME", "JOIN ANOTHER CONSOLE"):
+            self.assertIn(value, source)
+        # The address is typed with the pad, so the direction repeats while it
+        # is held and the shoulders pick which part is being changed.
+        self.assertIn("#define COOP_REPEAT_FRAMES 4", source)
+        self.assertIn("coop_repeat = (coop_repeat + 1) % COOP_REPEAT_FRAMES;", source)
+        self.assertIn("coop_part = (coop_part + 1) % COOP_ADDRESS_PARTS;", source)
+        self.assertIn('"L/R: PART"', source)
+        # This console's own address is the one the others have to type, so the
+        # screen shows it before anything is started.
+        self.assertIn("NET_VITA_GetLocalAddress(coop_local_address, sizeof(coop_local_address));", source)
+        self.assertIn("boolean NET_VITA_EnsureStack(void)", (engine / "net_vita.c").read_text(encoding="utf-8"))
+        self.assertIn("NO WI-FI ADDRESS", source)
+        # A console that cannot play the chosen game is told which one, instead
+        # of being sent into a fatal error by the engine.
+        self.assertIn("if (launcher_game_ready(coop_game)) {", source)
+
+    def test_coop_arguments_carry_the_role_the_game_and_the_port(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        # The game is chosen the same way for one console and for several, so
+        # the two paths cannot drift apart.
+        self.assertIn("static int game_arguments(int game, char *out[], int max)", source)
+        self.assertIn("static int coop_arguments(char *out[], int max)", source)
+        run = source.split("int game = coop_ready ? coop_game : selected;")[1]
+        self.assertIn("nargc = game_arguments(game, nargv, GAME_ARGV_MAX);", run)
+        self.assertIn("coop_arguments(nargv + nargc, GAME_ARGV_MAX - nargc)", run)
+        # The engine keeps the pointers for the whole game, so the strings it
+        # is handed cannot live on a stack frame that returns.
+        arguments = source.split("static int game_arguments")[1].split("static int coop_arguments")[0]
+        self.assertIn("static char patch_path[]", arguments)
+        self.assertNotIn("  char patch_path[]", arguments)
+        # Hosting waits for the consoles it was told about; joining connects to
+        # the typed address. Both sides open the same port.
+        coop = source.split("static int coop_arguments")[1].split("/* MAIN */")[0]
+        self.assertIn('#define COOP_PORT 2342', source)
+        self.assertIn('"-server"', coop)
+        self.assertIn('"-connect"', coop)
+        self.assertIn('"-nodes"', coop)
+        self.assertIn('"-port"', coop)
+        self.assertIn('snprintf(port_value, sizeof(port_value), "%d", COOP_PORT);', coop)
+        self.assertIn("nodes_value[0] = (char)('0' + coop_consoles);", coop)
+        self.assertIn("if (coop_mode == COOP_HOSTING) {", coop)
+        self.assertIn("coop_address_plain(host_value, sizeof(host_value));", coop)
+
+    def test_coop_settings_are_remembered_between_sessions(self):
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        saved = source.split("static void settings_save(void) {")[1].split("\n}")[0]
+        loaded = source.split("static void settings_load(void) {")[1].split("\n}")[0]
+        # An address is typed once: the role, the game, how many consoles and
+        # the address itself all go into the settings file and come back.
+        for key in ("coop=%s", "coopgame=%d", "coopnodes=%d", "coophost=%d.%d.%d.%d"):
+            self.assertIn(key, saved)
+        for key in ('strstr(buf, "coop=")', 'strstr(buf, "coopgame=")',
+                    'strstr(buf, "coopnodes=")', 'strstr(buf, "coophost=")'):
+            self.assertIn(key, loaded)
+        # A file from an older build, or one that was edited by hand, cannot
+        # put a value in that the game cannot use.
+        self.assertIn("if (game >= 0 && game <= 2)", loaded)
+        self.assertIn("if (consoles >= COOP_MIN_CONSOLES && consoles <= COOP_MAX_CONSOLES)", loaded)
+        self.assertIn('sscanf(value + 9, "%u.%u.%u.%u", &a, &b, &c, &d) == 4', loaded)
+        self.assertIn("&& a < 256 && b < 256 && c < 256 && d < 256", loaded)
+        self.assertIn("#define COOP_MIN_CONSOLES 2", source)
+        self.assertIn("#define COOP_MAX_CONSOLES 4", source)
 
     def test_readme_options_screenshot_is_generated_from_the_port(self):
         # The README shows the OPTIONS screen, and that image is not a

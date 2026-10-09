@@ -68,7 +68,7 @@ static int addr_table_size = -1;
  * ------------------------------------------------------------------ */
 
 /* Started on first use: a single player game never touches the network. */
-static boolean NET_VITA_InitStack(void)
+boolean NET_VITA_EnsureStack(void)
 {
     SceNetInitParam param;
 
@@ -104,8 +104,8 @@ void NET_VITA_GetLocalAddress(char *buffer, int buffer_len)
 
     buffer[0] = '\0';
 
-    if (!net_stack_ready || sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_IP_ADDRESS,
-                                                &info) < 0)
+    if (!NET_VITA_EnsureStack()
+     || sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_IP_ADDRESS, &info) < 0)
     {
         return;
     }
@@ -271,7 +271,7 @@ static boolean NET_VITA_InitClient(void)
     if (p > 0)
         port = atoi(myargv[p+1]);
 
-    if (!NET_VITA_InitStack())
+    if (!NET_VITA_EnsureStack())
         I_Error("NET_VITA_InitClient: the console network is not available");
 
     udpsocket = NET_VITA_OpenSocket(false);
@@ -297,7 +297,7 @@ static boolean NET_VITA_InitServer(void)
     if (p > 0)
         port = atoi(myargv[p+1]);
 
-    if (!NET_VITA_InitStack())
+    if (!NET_VITA_EnsureStack())
         I_Error("NET_VITA_InitServer: the console network is not available");
 
     udpsocket = NET_VITA_OpenSocket(true);

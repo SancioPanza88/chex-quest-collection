@@ -8,10 +8,11 @@
 //                    draws its own window with the textscreen library. A
 //                    console joins by address, so the calls answer "nothing
 //                    found" instead.
-//   * net_gui.c    - the same window while waiting for the other players to
-//                    get ready. The waiting itself is done by the netgame
-//                    layer, so what is left here is the loop: pump the client,
-//                    pump the server, wait.
+//   * net_gui.c    - the window shown while the other players get ready. The
+//                    console has no keyboard, so the "press space to start"
+//                    action of the desktop ports becomes an automatic launch
+//                    once the consoles named by -nodes are in. The screen
+//                    itself is drawn by the port (VITA_NetWaitScreen).
 //   * net_dedicated.c - a server with no player and no screen. There is no way
 //                    to ask for one from the launcher, so it is refused.
 //
@@ -22,10 +23,12 @@
 //
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "doomtype.h"
 #include "i_system.h"
 #include "i_timer.h"
+#include "m_argv.h"
 #include "net_client.h"
 #include "net_defs.h"
 #include "net_dedicated.h"
@@ -105,16 +108,42 @@ void NET_Query_MasterResponse(net_packet_t *packet)
  * Waiting for the game to start (net_gui.c)                           *
  * ------------------------------------------------------------------ */
 
+/* Drawn by the port (doomgeneric_vita.c). The console has no text mode, so the
+   waiting screen has to come from the same UI code as its menus. A negative
+   count means the server has not answered yet. */
+extern void VITA_NetWaitScreen(int connected, int expected, int is_controller);
+
+/* How many consoles the game waits for. The desktop ports start a netgame when
+   the controller presses a key in the waiting window; a console has no keyboard
+   to press, so the controller launches by itself as soon as this many have
+   joined. The launcher always passes the number it was told to wait for. */
+static int ExpectedNodes(void)
+{
+    int p = M_CheckParmWithArgs("-nodes", 1);
+
+    if (p > 0)
+    {
+        return atoi(myargv[p + 1]);
+    }
+
+    /* Two consoles are the smallest co-op game there is. */
+    return 2;
+}
+
 /* A client that has connected sits here until the server says the game is
-   starting: net_waiting_for_launch is cleared by the launch packet. Without a
-   screen of its own the loop is only the two pumps and a short pause, which
-   is what keeps the console responsive to a server that stops answering. */
+   starting: net_waiting_for_launch is cleared by the launch packet. */
 void NET_WaitForLaunch(void)
 {
-    printf("Waiting for the other players...\n");
+    int wanted = ExpectedNodes();
+    int launched = 0;
 
     while (net_waiting_for_launch)
     {
+        int connected = net_client_received_wait_data
+                      ? net_client_wait_data.num_players
+                        + net_client_wait_data.num_drones
+                      : -1;
+
         NET_CL_Run();
         NET_SV_Run();
 
@@ -122,6 +151,17 @@ void NET_WaitForLaunch(void)
         {
             I_Error("Lost connection to server");
         }
+
+        /* Only the controller may launch the game, and it does so once. */
+        if (!launched && net_client_wait_data.is_controller
+         && connected >= wanted)
+        {
+            NET_CL_LaunchGame();
+            launched = 1;
+        }
+
+        VITA_NetWaitScreen(connected, wanted,
+                           net_client_wait_data.is_controller);
 
         I_Sleep(10);
     }

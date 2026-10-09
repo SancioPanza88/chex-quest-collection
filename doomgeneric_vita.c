@@ -13,6 +13,7 @@
 #include "p_saveg.h"
 #include "i_sound.h"
 #include "m_argv.h"
+#include "net_vita.h"
 #include "s_sound.h"
 #include "sounds.h"
 #include "w_wad.h"
@@ -100,6 +101,37 @@ static int fps_counter_on = 0;
 static uint32_t fps_window_start = 0;
 static int fps_window_frames = 0, fps_value = 0, fps_frame_ms_x10 = 0;
 static int auto_speed_slow_windows = 0;
+
+/* ---------------------------------------------------------------- *
+ * Co-op over the local network                                     *
+ *                                                                  *
+ * Two or more consoles on the same Wi-Fi play the same game: one    *
+ * hosts it, the others join it by address. The playing is done by   *
+ * the engine's netgame layer; what the launcher does is decide the  *
+ * game, the role and the address, remember them, and pass them on   *
+ * the command line.                                                 *
+ * ---------------------------------------------------------------- */
+
+#define COOP_PORT 2342
+#define COOP_MIN_CONSOLES 2
+#define COOP_MAX_CONSOLES 4
+#define COOP_HOSTING 0
+#define COOP_JOINING 1
+#define COOP_ADDRESS_PARTS 4
+/* The address row needs the direction to repeat while it is held: a screen
+   that edits one number per press takes a minute to type an address in. */
+#define COOP_REPEAT_FRAMES 4
+
+static int coop_game = 0;             /* the game every console must own */
+static int coop_mode = COOP_HOSTING;
+static int coop_consoles = COOP_MIN_CONSOLES; /* this console included */
+static unsigned char coop_host[COOP_ADDRESS_PARTS] = { 192, 168, 0, 1 };
+static int coop_part = COOP_ADDRESS_PARTS - 1; /* the part L and R pick */
+/* Set when the co-op screen was told to play: how main() learns to start a
+   netgame instead of a single player one. */
+static int coop_ready = 0;
+static char coop_local_address[24] = "";
+
 static void settings_load(void);
 static void settings_save(void);
 static void fps_counter_tick(void);
@@ -704,25 +736,31 @@ static int options_set(int row, int right)
     return 1;
 }
 
-static void options_draw_row(int row)
+/* One boxed setting row. Both screens show their settings this way, so they
+   keep looking like the same screen. */
+static void settings_box_row(int y, int selected, const char *label,
+                             const char *value, const char *hint)
 {
-    char value[64];
-    int y = OPT_ROW_Y(row);
-    int selected = (row == options_selected);
     uint32_t border = selected ? UI_GOLD : UI_GOLD_DIM;
 
-    options_value(row, value, sizeof(value));
     ui_rect(OPT_ROW_X, y, OPT_ROW_W, OPT_ROW_H, selected ? UI_PANEL : UI_BAR);
     ui_rect(OPT_ROW_X, y, OPT_ROW_W, 2, border);
     ui_rect(OPT_ROW_X, y + OPT_ROW_H - 2, OPT_ROW_W, 2, border);
     ui_rect(OPT_ROW_X, y, 2, OPT_ROW_H, border);
     ui_rect(OPT_ROW_X + OPT_ROW_W - 2, y, 2, OPT_ROW_H, border);
-    ui_text(OPT_LABEL_X, y + 10, opt_labels[row], selected ? UI_WHITE : UI_TEXT,
-            2);
+    ui_text(OPT_LABEL_X, y + 10, label, selected ? UI_WHITE : UI_TEXT, 2);
     ui_text(OPT_VALUE_X, y + 10, value, selected ? UI_READY : UI_DIM, 2);
-    if (selected)
-        ui_text_right(OPT_ROW_X + OPT_ROW_W - 20, y + 10, "X: CHANGE",
-                      UI_GOLD_DIM, 2);
+    if (selected && hint != NULL)
+        ui_text_right(OPT_ROW_X + OPT_ROW_W - 20, y + 10, hint, UI_GOLD_DIM, 2);
+}
+
+static void options_draw_row(int row)
+{
+    char value[64];
+
+    options_value(row, value, sizeof(value));
+    settings_box_row(OPT_ROW_Y(row), row == options_selected, opt_labels[row],
+                     value, "X: CHANGE");
 }
 
 static void options_value(int row, char *out, size_t size)
@@ -832,6 +870,341 @@ static void show_options_screen(void)
         previous = pad;
         sceKernelDelayThread(16000);
     }
+}
+
+/* ------------------------------------------------------------------ *
+ * Co-op screen                                                       *
+ *                                                                     *
+ * Four settings and then X: one console hosts the game, the others    *
+ * join it at the address it shows. The rows are drawn like the        *
+ * options ones, because they are the same kind of thing.              *
+ * ------------------------------------------------------------------ */
+
+#define COOP_ROWS 4
+#define COOP_ROW_GAME 0
+#define COOP_ROW_MODE 1
+#define COOP_ROW_CONSOLES 2
+#define COOP_ROW_JOIN 3
+
+static const char *const coop_game_names[3] = {
+    "CHEX QUEST 1", "CHEX QUEST 2", "CHEX QUEST 3"
+};
+
+static int coop_selected = 0;
+
+static void coop_address_plain(char *out, size_t size)
+{
+    snprintf(out, size, "%d.%d.%d.%d", coop_host[0], coop_host[1],
+             coop_host[2], coop_host[3]);
+}
+
+/* The part the shoulders picked is the one left and right change. */
+static void coop_address_marked(char *out, size_t size)
+{
+    char text[40];
+    int len = 0, i;
+
+    for (i = 0; i < COOP_ADDRESS_PARTS; ++i) {
+        int written;
+
+        if (i > 0 && len < (int)sizeof(text) - 1)
+            text[len++] = '.';
+        written = snprintf(text + len, sizeof(text) - (size_t)len,
+                           i == coop_part ? "<%d>" : "%d", coop_host[i]);
+        if (written < 0)
+            break;
+        len += written;
+    }
+    text[len < (int)sizeof(text) ? len : (int)sizeof(text) - 1] = '\0';
+    snprintf(out, size, "%s", text);
+}
+
+/* Left decreases the value, right increases it. Returns 1 when something
+   changed, so the caller can save the file. */
+static int coop_set(int row, int right)
+{
+    switch (row) {
+    case COOP_ROW_GAME:
+        {
+            int wanted = (coop_game + (right ? 1 : 2)) % 3;
+            if (wanted == coop_game)
+                return 0;
+            coop_game = wanted;
+        }
+        break;
+    case COOP_ROW_MODE:
+        {
+            int wanted = right ? COOP_JOINING : COOP_HOSTING;
+            if (wanted == coop_mode)
+                return 0;
+            coop_mode = wanted;
+        }
+        break;
+    case COOP_ROW_CONSOLES:
+        {
+            int span = COOP_MAX_CONSOLES - COOP_MIN_CONSOLES + 1;
+            int index = coop_consoles - COOP_MIN_CONSOLES;
+            index = (index + (right ? 1 : span - 1)) % span;
+            if (COOP_MIN_CONSOLES + index == coop_consoles)
+                return 0;
+            coop_consoles = COOP_MIN_CONSOLES + index;
+        }
+        break;
+    default:
+        if (coop_mode != COOP_JOINING)
+            return 0;
+        coop_host[coop_part] = (unsigned char)(right
+                                               ? coop_host[coop_part] + 1
+                                               : coop_host[coop_part] - 1);
+        break;
+    }
+    return 1;
+}
+
+static void coop_value(int row, char *out, size_t size)
+{
+    char address[40];
+
+    switch (row) {
+    case COOP_ROW_GAME:
+        snprintf(out, size, "%s  %s", coop_game_names[coop_game],
+                 launcher_game_ready(coop_game) ? "READY" : "NEEDS ITS FILES");
+        break;
+    case COOP_ROW_MODE:
+        snprintf(out, size, "%s  %s",
+                 coop_mode == COOP_HOSTING ? "HOST THIS GAME"
+                                           : "JOIN ANOTHER CONSOLE",
+                 coop_mode == COOP_HOSTING ? "THE OTHERS JOIN YOU"
+                                           : "TYPE THE HOST ADDRESS");
+        break;
+    case COOP_ROW_CONSOLES:
+        snprintf(out, size, "%d  %s", coop_consoles,
+                 coop_consoles == COOP_MIN_CONSOLES
+                     ? "THIS CONSOLE AND ONE OTHER"
+                     : "THIS CONSOLE AND THE OTHERS");
+        break;
+    default:
+        if (coop_mode == COOP_HOSTING)
+            snprintf(out, size, "NOT NEEDED WHILE THIS CONSOLE HOSTS");
+        else {
+            coop_address_marked(address, sizeof(address));
+            snprintf(out, size, "%s", address);
+        }
+        break;
+    }
+}
+
+static void coop_draw(void)
+{
+    char value[64], line[64];
+    int i;
+
+    ui_rect(0, 0, VITA_W, VITA_H, UI_BG);
+    ui_rect(0, 0, VITA_W, 64, UI_BAR);
+    ui_rect(0, 63, VITA_W, 2, UI_GOLD);
+    ui_text(28, 18, "CO-OP", UI_GOLD, 3);
+    ui_text_right(VITA_W - 28, 26, "CHEX QUEST COLLECTION", UI_DIM, 2);
+
+    ui_text(48, 88, "ON THE SAME WI-FI", UI_GOLD, 2);
+    ui_rect(48, 112, 400, 2, UI_GOLD_DIM);
+    ui_text(48, 130, "THIS CONSOLE AND THE OTHERS", UI_TEXT, 2);
+    ui_text(48, 152, "PLAY ONE GAME TOGETHER.", UI_TEXT, 2);
+    ui_text(48, 174, "EVERY CONSOLE NEEDS THE", UI_TEXT, 2);
+    ui_text(48, 196, "SAME GAME FILES, AND THE", UI_TEXT, 2);
+    ui_text(48, 218, "HOST REFUSES THE OTHERS", UI_TEXT, 2);
+    ui_text(48, 240, "IF THEY DO NOT MATCH.", UI_TEXT, 2);
+    ui_text(48, 262, "THE HOST STARTS AS SOON AS", UI_GOLD_DIM, 2);
+    ui_text(48, 284, "THE CHOSEN NUMBER IS HERE.", UI_GOLD_DIM, 2);
+
+    ui_text(520, 88, "THIS CONSOLE", UI_GOLD, 2);
+    ui_rect(520, 112, 400, 2, UI_GOLD_DIM);
+    if (coop_local_address[0])
+        snprintf(line, sizeof(line), "%s", coop_local_address);
+    else
+        snprintf(line, sizeof(line), "NO WI-FI ADDRESS");
+    ui_text(520, 130, line, coop_local_address[0] ? UI_READY : UI_ALERT, 2);
+    snprintf(line, sizeof(line), "PORT %d", COOP_PORT);
+    ui_text(520, 152, line, UI_TEXT, 2);
+    if (coop_mode == COOP_HOSTING) {
+        ui_text(520, 174, "THE OTHERS TYPE THAT", UI_TEXT, 2);
+        ui_text(520, 196, "ADDRESS AND JOIN.", UI_TEXT, 2);
+    } else {
+        ui_text(520, 174, "TYPE THE HOST ADDRESS", UI_TEXT, 2);
+        ui_text(520, 196, "IN THE JOIN ROW BELOW.", UI_TEXT, 2);
+    }
+    ui_text(520, 218, "TURN WI-FI ON BEFORE", UI_GOLD_DIM, 2);
+    ui_text(520, 240, "STARTING, OR THERE IS", UI_GOLD_DIM, 2);
+    ui_text(520, 262, "NOTHING TO CONNECT TO.", UI_GOLD_DIM, 2);
+
+    ui_text(48, 316, "CO-OP", UI_GOLD, 2);
+    ui_text_right(VITA_W - 48, 316, "THEY APPLY WHEN X STARTS A GAME", UI_DIM, 2);
+    for (i = 0; i < COOP_ROWS; ++i) {
+        static const char *const labels[COOP_ROWS] = {
+            "GAME", "MODE", "CONSOLES", "JOIN"
+        };
+        int selected = (i == coop_selected);
+
+        coop_value(i, value, sizeof(value));
+        settings_box_row(OPT_ROW_Y(i), selected, labels[i], value,
+                         selected && i == COOP_ROW_JOIN ? "L/R: PART" : NULL);
+    }
+
+    ui_rect(0, 496, VITA_W, VITA_H - 496, UI_BAR);
+    ui_rect(0, 494, VITA_W, 2, UI_GOLD_DIM);
+    ui_text(28, 514, "UP/DOWN: ROW   LEFT/RIGHT: VALUE   L/R: PART", UI_WHITE, 2);
+    ui_text_right(VITA_W - 28, 514, "X: PLAY   START: GO BACK", UI_DIM, 2);
+
+    ui_present();
+}
+
+/* The address is a number typed with a D-pad, so the direction repeats while
+   it is held: one press, then every COOP_REPEAT_FRAMES frames. */
+static int coop_repeat = 0;
+
+static void show_coop_screen(void)
+{
+    SceCtrlData pad, previous;
+    int redraw = 1;
+
+    coop_ready = 0;
+    coop_selected = 0;
+    coop_repeat = 0;
+    /* Say the address this console has right now, so it can be read out to
+       the other player. Bringing the network up here is also what turns an
+       offline console into a clear "no Wi-Fi" line instead of a hang. */
+    NET_VITA_GetLocalAddress(coop_local_address, sizeof(coop_local_address));
+    debug_logf("coop: local address '%s'", coop_local_address);
+
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+    previous = pad; /* the button that opened the screen must not act at once */
+    for (;;) {
+        int changed = 0;
+        int left_held, right_held;
+
+        sceCtrlPeekBufferPositive(0, &pad, 1);
+        left_held = (pad.buttons & SCE_CTRL_LEFT) != 0;
+        right_held = (pad.buttons & SCE_CTRL_RIGHT) != 0;
+
+        if ((pad.buttons & SCE_CTRL_START) && !(previous.buttons & SCE_CTRL_START))
+            return;
+        if ((pad.buttons & SCE_CTRL_UP) && !(previous.buttons & SCE_CTRL_UP)) {
+            coop_selected = (coop_selected + COOP_ROWS - 1) % COOP_ROWS;
+            redraw = 1;
+        }
+        if ((pad.buttons & SCE_CTRL_DOWN) && !(previous.buttons & SCE_CTRL_DOWN)) {
+            coop_selected = (coop_selected + 1) % COOP_ROWS;
+            redraw = 1;
+        }
+        if (coop_selected == COOP_ROW_JOIN) {
+            if ((pad.buttons & SCE_CTRL_R) && !(previous.buttons & SCE_CTRL_R)) {
+                coop_part = (coop_part + 1) % COOP_ADDRESS_PARTS;
+                redraw = 1;
+            }
+            if ((pad.buttons & SCE_CTRL_L) && !(previous.buttons & SCE_CTRL_L)) {
+                coop_part = (coop_part + COOP_ADDRESS_PARTS - 1) % COOP_ADDRESS_PARTS;
+                redraw = 1;
+            }
+            if (left_held || right_held) {
+                int pressed = !(previous.buttons & (SCE_CTRL_LEFT | SCE_CTRL_RIGHT));
+                if (pressed || coop_repeat == 0)
+                    changed |= coop_set(COOP_ROW_JOIN, right_held);
+                coop_repeat = (coop_repeat + 1) % COOP_REPEAT_FRAMES;
+            } else {
+                coop_repeat = 0;
+            }
+        } else {
+            if ((pad.buttons & SCE_CTRL_RIGHT) && !(previous.buttons & SCE_CTRL_RIGHT))
+                changed |= coop_set(coop_selected, 1);
+            if ((pad.buttons & SCE_CTRL_LEFT) && !(previous.buttons & SCE_CTRL_LEFT))
+                changed |= coop_set(coop_selected, 0);
+        }
+        if ((pad.buttons & SCE_CTRL_CROSS) && !(previous.buttons & SCE_CTRL_CROSS)) {
+            if (launcher_game_ready(coop_game)) {
+                coop_ready = 1;
+                settings_save();
+                return;
+            }
+            /* Without the files of the chosen game there is nothing to
+               host or to join, so X only says which one is missing. */
+            debug_logf("coop: game %d has no data files", coop_game + 1);
+            redraw = 1;
+        }
+        if (changed) {
+            settings_save();
+            redraw = 1;
+        }
+        if (redraw) {
+            coop_draw();
+            redraw = 0;
+        }
+        previous = pad;
+        sceKernelDelayThread(16000);
+    }
+}
+
+static void return_to_launcher(void);
+
+/* ------------------------------------------------------------------ *
+ * Waiting for the other consoles                                      *
+ *                                                                     *
+ * The netgame layer calls this (net_vita_glue.c) while it waits for   *
+ * the others to connect. A console cannot press a key to start the    *
+ * game like the desktop ports do, so the screen only has to say who   *
+ * is here; the launch itself happens as soon as everyone is.          *
+ * ------------------------------------------------------------------ */
+
+void VITA_NetWaitScreen(int connected, int expected, int is_controller)
+{
+    /* Held for a second, like the in-game way back to the launcher. */
+    static int stop_hold = 0;
+    char line[48];
+    SceCtrlData pad;
+    int x, y;
+
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+    if ((pad.buttons & (SCE_CTRL_L | SCE_CTRL_R | SCE_CTRL_SELECT))
+        == (SCE_CTRL_L | SCE_CTRL_R | SCE_CTRL_SELECT)) {
+        if (++stop_hold >= 60)
+            return_to_launcher();
+    } else {
+        stop_hold = 0;
+    }
+
+    launcher_frame = 1;
+    launcher_rect(0, 0, SCREENWIDTH, SCREENHEIGHT, L_RGB(14, 16, 26));
+    draw_menu_text_scaled(10, 6, "CO-OP", L_COL_GOLD, 2);
+    draw_menu_text_right(SCREENWIDTH - 10, 10, "CHEX QUEST COLLECTION",
+                         L_COL_TEXT_DIM, 1);
+    launcher_rect(0, 32, SCREENWIDTH, 2, L_COL_GOLD_DIM);
+
+    if (connected < 0)
+        snprintf(line, sizeof(line), "LOOKING FOR THEM");
+    else
+        snprintf(line, sizeof(line), "%d OF %d CONSOLES IN", connected,
+                 expected);
+    draw_menu_text_scaled(10, 56, line,
+                          connected >= expected ? L_COL_READY : L_COL_WHITE, 2);
+
+    /* One square per console that has to be here. */
+    for (x = 0; x < expected && x < COOP_MAX_CONSOLES; ++x) {
+        launcher_rect(10 + x * 24, 84, 20, 12,
+                      connected > x ? L_COL_READY : L_COL_LINE);
+    }
+
+    launcher_rect(0, 120, SCREENWIDTH, 2, L_COL_LINE);
+    if (is_controller) {
+        draw_menu_text(10, 132, "THIS CONSOLE HOSTS THE GAME.", L_COL_TEXT);
+        draw_menu_text(10, 144, "IT STARTS AS SOON AS THEY", L_COL_TEXT);
+        draw_menu_text(10, 156, "HAVE ALL CONNECTED.", L_COL_TEXT);
+    } else {
+        draw_menu_text(10, 132, "CONNECTED TO THE HOST.", L_COL_TEXT);
+        draw_menu_text(10, 144, "IT STARTS THE GAME AS SOON", L_COL_TEXT);
+        draw_menu_text(10, 156, "AS EVERYONE IS IN.", L_COL_TEXT);
+    }
+    y = 176;
+    draw_menu_text(10, y, "HOLD L+R+SELECT TO GO BACK", L_COL_TEXT_DIM, 1);
+
+    I_FinishUpdate();
 }
 
 /* ------------------------------------------------------------------ *
@@ -1057,7 +1430,7 @@ static void draw_launcher(int selected)
     draw_menu_text(L_ROW_X + 2, L_FOOTER_Y + 4, "UP/DOWN: CHOOSE   X: LAUNCH", L_COL_TEXT);
     draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 4, "TRIANGLE: EXIT", L_COL_TEXT_DIM, 1);
     draw_menu_text(L_ROW_X + 2, L_FOOTER_Y + 14, "SQUARE: DATA FILES", L_COL_GOLD_DIM);
-    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 14, "SELECT: OPTIONS", L_COL_TEXT_DIM, 1);
+    draw_menu_text_right(SCREENWIDTH - 10, L_FOOTER_Y + 14, "SELECT: OPTIONS   R: CO-OP", L_COL_TEXT_DIM, 1);
     I_FinishUpdate();
 }
 
@@ -2543,16 +2916,47 @@ static void settings_load(void) {
   value = strstr(buf, "counter=");
   if (value)
     fps_counter_on = atoi(value + 8) != 0;
+  value = strstr(buf, "coop=");
+  if (value)
+    coop_mode = strncmp(value + 5, "join", 4) == 0 ? COOP_JOINING : COOP_HOSTING;
+  value = strstr(buf, "coopgame=");
+  if (value) {
+    int game = atoi(value + 9);
+    if (game >= 0 && game <= 2)
+      coop_game = game;
+  }
+  value = strstr(buf, "coopnodes=");
+  if (value) {
+    int consoles = atoi(value + 10);
+    if (consoles >= COOP_MIN_CONSOLES && consoles <= COOP_MAX_CONSOLES)
+      coop_consoles = consoles;
+  }
+  value = strstr(buf, "coophost=");
+  if (value) {
+    unsigned int a, b, c, d;
+    if (sscanf(value + 9, "%u.%u.%u.%u", &a, &b, &c, &d) == 4
+        && a < 256 && b < 256 && c < 256 && d < 256) {
+      coop_host[0] = (unsigned char)a;
+      coop_host[1] = (unsigned char)b;
+      coop_host[2] = (unsigned char)c;
+      coop_host[3] = (unsigned char)d;
+    }
+  }
   fps_active = fps_target;
   debug_logf("settings: framerate=%d auto=%d counter=%d", fps_target,
              auto_speed, fps_counter_on);
 }
 
 static void settings_save(void) {
-  char buf[96];
+  char buf[192];
   SceUID fd;
-  snprintf(buf, sizeof(buf), "framerate=%d\nauto=%d\ncounter=%d\n", fps_target,
-           auto_speed, fps_counter_on);
+  snprintf(buf, sizeof(buf),
+           "framerate=%d\nauto=%d\ncounter=%d\n"
+           "coop=%s\ncoopgame=%d\ncoopnodes=%d\ncoophost=%d.%d.%d.%d\n",
+           fps_target, auto_speed, fps_counter_on,
+           coop_mode == COOP_JOINING ? "join" : "host",
+           coop_game, coop_consoles,
+           coop_host[0], coop_host[1], coop_host[2], coop_host[3]);
   fd = sceIoOpen(SETTINGS_PATH, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
   if (fd < 0) {
     debug_log("settings: cannot write settings.cfg");
@@ -2827,6 +3231,94 @@ static void game_loop_smooth(void) {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * The command line of the game                                       *
+ *                                                                     *
+ * The engine reads its own command line, so the game, the iwads and    *
+ * the co-op role are all chosen by building one: the same path for a   *
+ * single player game and for a session with other consoles.           *
+ * ------------------------------------------------------------------ */
+
+#define GAME_ARGV_MAX 16
+
+static int game_arguments(int game, char *out[], int max)
+{
+  static char program[] = "ChexQuestCollection";
+  static char iwad_arg[] = "-iwad", file_arg[] = "-file", chex3_arg[] = "-chex3";
+  static char collection_game_arg[] = "-collection-game";
+  static char game_ids[][2] = { "1", "2", "3" };
+  static char chex_iwad[] = VITA_GAME_DATA_DIR "CHEX.WAD";
+  static char chex2_pwad[] = VITA_GAME_DATA_DIR "CHEX2.WAD";
+  static char chex3_iwad[] = "ux0:/data/chexquestcollection/chex3v.wad";
+  /* Static because the engine keeps the pointers for the whole game. */
+  static char patch_path[] = "ux0:/data/chexquestcollection/chex3.deh";
+  int n = 0;
+
+  if (max < 8)
+    return 0;
+
+  out[n++] = program;
+  out[n++] = iwad_arg;
+  if (game == 2) {
+    SceUID wadfd = sceIoOpen(chex3_iwad, SCE_O_RDONLY, 0);
+    SceUID dehfd = sceIoOpen(patch_path, SCE_O_RDONLY, 0);
+    if (wadfd < 0 || dehfd < 0) fatal_error("Chex 3 needs chex3v.wad and chex3.deh in ux0:/data/chexquestcollection/");
+    sceIoClose(wadfd);
+    sceIoClose(dehfd);
+    out[n++] = chex3_iwad;
+    out[n++] = chex3_arg;
+  } else {
+    SceUID wadfd = sceIoOpen(chex_iwad, SCE_O_RDONLY, 0);
+    if (wadfd < 0) fatal_error("Chex 1/2 needs CHEX.WAD in ux0:/data/chexquestcollection/");
+    sceIoClose(wadfd);
+    out[n++] = chex_iwad;
+    if (game == 1) {
+      SceUID pwadfd = sceIoOpen(chex2_pwad, SCE_O_RDONLY, 0);
+      if (pwadfd < 0) fatal_error("Chex 2 needs CHEX2.WAD in ux0:/data/chexquestcollection/");
+      sceIoClose(pwadfd);
+      out[n++] = file_arg;
+      out[n++] = chex2_pwad;
+    }
+  }
+  out[n++] = collection_game_arg;
+  out[n++] = game_ids[game];
+  return n;
+}
+
+/* The netgame arguments of the co-op screen. The host waits for the consoles
+   it was told about (-nodes) and starts the game itself, because a console has
+   no key to press; the others connect to the address that was typed. Both
+   sides open the same port, so a session is one host and its guests. */
+static int coop_arguments(char *out[], int max)
+{
+  static char server_arg[] = "-server";
+  static char connect_arg[] = "-connect";
+  static char nodes_arg[] = "-nodes";
+  static char port_arg[] = "-port";
+  static char nodes_value[2] = { '2', '\0' };
+  static char port_value[8] = "";
+  static char host_value[16] = "";
+  int n = 0;
+
+  if (max < 6)
+    return 0;
+
+  snprintf(port_value, sizeof(port_value), "%d", COOP_PORT);
+  if (coop_mode == COOP_HOSTING) {
+    nodes_value[0] = (char)('0' + coop_consoles);
+    out[n++] = server_arg;
+    out[n++] = nodes_arg;
+    out[n++] = nodes_value;
+  } else {
+    coop_address_plain(host_value, sizeof(host_value));
+    out[n++] = connect_arg;
+    out[n++] = host_value;
+  }
+  out[n++] = port_arg;
+  out[n++] = port_value;
+  return n;
+}
+
 /* MAIN */
 int main(int argc, char **argv) {
   SceAppUtilInitParam ip;
@@ -2926,6 +3418,13 @@ int main(int argc, char **argv) {
       } else if ((pad.buttons & SCE_CTRL_SELECT) && !(previous.buttons & SCE_CTRL_SELECT)) {
         show_options_screen();
         needs_draw = 1;
+      } else if ((pad.buttons & SCE_CTRL_R) && !(previous.buttons & SCE_CTRL_R)) {
+        /* The co-op screen chooses its own game, so R is a way into a game
+           that does not go through the launcher rows. */
+        show_coop_screen();
+        if (coop_ready)
+          break;
+        needs_draw = 1;
       } else if ((pad.buttons & SCE_CTRL_TRIANGLE) && !(previous.buttons & SCE_CTRL_TRIANGLE)) {
         sceKernelExitProcess(0);
       } else if ((pad.buttons & (SCE_CTRL_CROSS | SCE_CTRL_START)) &&
@@ -2949,42 +3448,23 @@ int main(int argc, char **argv) {
     launcher_frame = 0;
 
     {
-      char *nargv[8];
-      int nargc = 0;
-      static char program[] = "ChexQuestCollection";
-      static char iwad_arg[] = "-iwad", file_arg[] = "-file", chex3_arg[] = "-chex3";
-      static char collection_game_arg[] = "-collection-game";
-      static char game_ids[][2] = { "1", "2", "3" };
-      static char chex_iwad[] = VITA_GAME_DATA_DIR "CHEX.WAD";
-      static char chex2_pwad[] = VITA_GAME_DATA_DIR "CHEX2.WAD";
-      static char chex3_iwad[] = "ux0:/data/chexquestcollection/chex3v.wad";
-      char patch_path[] = "ux0:/data/chexquestcollection/chex3.deh";
-      nargv[nargc++] = program;
-      nargv[nargc++] = iwad_arg;
-      if (selected == 2) {
-        SceUID wadfd = sceIoOpen(chex3_iwad, SCE_O_RDONLY, 0);
-        SceUID dehfd = sceIoOpen(patch_path, SCE_O_RDONLY, 0);
-        if (wadfd < 0 || dehfd < 0) fatal_error("Chex 3 needs chex3v.wad and chex3.deh in ux0:/data/chexquestcollection/");
-        sceIoClose(wadfd); sceIoClose(dehfd);
-        nargv[nargc++] = chex3_iwad;
-        nargv[nargc++] = chex3_arg;
+      char *nargv[GAME_ARGV_MAX];
+      int nargc;
+      /* The co-op screen plays the game it chose itself. */
+      int game = coop_ready ? coop_game : selected;
+
+      nargc = game_arguments(game, nargv, GAME_ARGV_MAX);
+      if (coop_ready) {
+        int coop_argc = coop_arguments(nargv + nargc, GAME_ARGV_MAX - nargc);
+        if (coop_argc == 0)
+          fatal_error("Not enough room for the co-op game arguments");
+        nargc += coop_argc;
+        debug_logf("Starting Chex Quest %d with %d consoles", game + 1,
+                   coop_consoles);
       } else {
-        SceUID wadfd = sceIoOpen(chex_iwad, SCE_O_RDONLY, 0);
-        if (wadfd < 0) fatal_error("Chex 1/2 needs CHEX.WAD in ux0:/data/chexquestcollection/");
-        sceIoClose(wadfd);
-        nargv[nargc++] = chex_iwad;
-        if (selected == 1) {
-          SceUID pwadfd = sceIoOpen(chex2_pwad, SCE_O_RDONLY, 0);
-          if (pwadfd < 0) fatal_error("Chex 2 needs CHEX2.WAD in ux0:/data/chexquestcollection/");
-          sceIoClose(pwadfd);
-          nargv[nargc++] = file_arg;
-          nargv[nargc++] = chex2_pwad;
-        }
+        debug_logf("Starting Chex Quest %d", game + 1);
       }
-      nargv[nargc++] = collection_game_arg;
-      nargv[nargc++] = game_ids[selected];
       nargv[nargc] = NULL;
-      debug_logf("Starting Chex Quest %d", selected + 1);
       doomgeneric_Create(nargc, nargv);
     }
   }
