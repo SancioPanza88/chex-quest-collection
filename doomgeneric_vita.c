@@ -3513,6 +3513,15 @@ int main(int argc, char **argv) {
       }
       nargv[nargc] = NULL;
       doomgeneric_Create(nargc, nargv);
+      /* The engine installs the game's palette only when the screen changes
+         away from a level (d_main.c, D_Display), and a co-op game skips the
+         title screen and goes straight into one: without this line the whole
+         netgame - level, menu, status bar - would be drawn with the placeholder
+         grey ramp of this port. */
+      if (netgame) {
+        I_SetPalette(W_CacheLumpName(DEH_String("PLAYPAL"), PU_CACHE));
+        debug_log("Co-op: installed the game palette for the netgame");
+      }
     }
   }
   if (fps_target == FPS_CLASSIC)

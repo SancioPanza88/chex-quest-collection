@@ -108,14 +108,23 @@ it proved and what it broke:
   itself, and the game came up on both — one console hosting and one joined is no
   longer a theory. Pressing START reached the game's own menu, so the input and
   the tic loop were running.
-- **The picture was wrong, and the cause was in the port, not in the netgame
-  layer.** The waiting screen draws with the launcher's own palette and left
+- **The picture was wrong, and both causes were in the port, not in the netgame
+  layer.** They are both about the palette, and the second test found the deeper
+  one. The waiting screen draws with the launcher's own table and left
   `launcher_frame` set, so every frame of the game after it was translated
   through the launcher table instead of the game's. Black stayed black (the
   screen the player saw) and everything else became the RGB332 expansion of a
   palette index that means nothing to the game (the mess seen after START). One
   flag, cleared in `VITA_NetWaitScreen()` now, and a contract test that keeps it
-  cleared.
+  cleared. With that flag cleared the game came up **in greys**: a netgame skips
+  the title screen and goes straight into a level (`if (autostart || netgame)`),
+  while the engine installs PLAYPAL only when the screen changes *away* from a
+  level (`D_Display`), so in co-op that line is never reached and the whole game
+  ran on the port's placeholder ramp. The port installs the game's palette
+  itself once the netgame is up; a contract test holds it there.
+- **The message "you can't start a new game in a network game" is the engine
+  behaving.** In co-op the level is already running - the host started it - so
+  NEW GAME is refused by design; nobody has to press anything to enter the game.
 - **Typing the address was the clunky part.** The first three parts of it are now
   taken from this console's own address before anything was ever typed, and
   choosing to join leaves the selection on the address row.

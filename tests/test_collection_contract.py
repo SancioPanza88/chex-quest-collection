@@ -382,6 +382,25 @@ class CollectionContractTests(unittest.TestCase):
         # The launcher itself clears it in the same way before a game starts.
         self.assertIn("menu_music_active = 0;\n    launcher_frame = 0;", source)
 
+    def test_a_netgame_installs_the_game_palette(self):
+        # Found on two consoles: in co-op the level, the menu and the status bar
+        # all came out in greys. A netgame skips the title screen and goes
+        # straight into a level, and the engine installs PLAYPAL only when the
+        # screen changes away from a level, so it never reaches that line: the
+        # port has to hand the game its palette itself, once the game is up.
+        source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
+        create = source.index("doomgeneric_Create(nargc, nargv);")
+        start = source.index("if (netgame) {", create)
+        installed = source.index(
+            'I_SetPalette(W_CacheLumpName(DEH_String("PLAYPAL"), PU_CACHE));', start)
+        self.assertIn("debug_log(\"Co-op: installed the game palette for the netgame\");",
+                      source[start:installed + 200])
+        # ... and the engine's own conditions are still the ones this works
+        # around: if they ever change, this line is the one to revisit.
+        engine = (ROOT / "doomgeneric/doomgeneric/d_main.c").read_text(encoding="utf-8")
+        self.assertIn("if (gamestate != oldgamestate && gamestate != GS_LEVEL)", engine)
+        self.assertIn("if (autostart || netgame)", engine)
+
     def test_the_join_address_only_needs_its_last_part_typed(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
         # A home router hands out addresses that share the first three parts,

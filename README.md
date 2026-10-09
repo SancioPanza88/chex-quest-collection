@@ -109,6 +109,10 @@ The role, the game, the number of consoles and the address are all stored in
   that would fall out of step.
 - **Co-operative, not deathmatch**: one shared level, one player per console.
   There is no second input on a single console, so this is a LAN feature.
+- **The level is already running when you get there.** The host started it as
+  soon as everyone connected, so opening the game's menu and picking **NEW GAME**
+  answers *you can't start a new game while you're in a network game*: that is
+  the engine refusing, as it should, not a fault. Saving is off in co-op too.
 - **Nothing leaves your network.** The console hosts the game itself and the
   others connect straight to its address: no account, no server, no listing.
 - Playing alone is exactly as before: leave the co-op screen with **START** and
