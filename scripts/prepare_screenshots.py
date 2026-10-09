@@ -87,11 +87,13 @@ class Canvas:
         self.text(right - width_of(string, scale), y, string, colour, scale)
 
 
-def setting_value(row: int) -> str:
-    """The strings options_value() builds for the row's current setting."""
-    if row == 0:
-        return "60 FPS  SMOOTH (INTERPOLATED)"
-    return "OFF  KEEPS THE SCREEN CLEAN"
+OPTION_ROWS = [
+    # label, x, y, width, height, value shown for the settings as shipped
+    ("FRAMERATE", 48, 336, 864, 34, "60 FPS  EVERY FRAME"),
+    ("PICTURE", 48, 376, 864, 34, "SHARP  FULL SCREEN AND HARD PIXELS"),
+    ("AUTO SPEED", 48, 416, 864, 34, "ON  DROPS TO 30 IF 60 DOES NOT FIT"),
+    ("FRAME COUNTER", 48, 456, 864, 34, "OFF  KEEPS THE SCREEN CLEAN"),
+]
 
 
 def options_screen() -> Canvas:
@@ -104,30 +106,29 @@ def options_screen() -> Canvas:
     canvas.text_right(WIDTH - 28, 26, "CHEX QUEST COLLECTION", DIM)
 
     for x, y, label, colour in [
-        (48, 96, "IN GAME", GOLD), (48, 122, None, GOLD_DIM),
-        (48, 140, "LEFT STICK: MOVE", TEXT), (48, 164, "RIGHT STICK: TURN", TEXT),
-        (48, 188, "X: USE", TEXT), (48, 212, "SQUARE OR R: FIRE", TEXT),
-        (48, 236, "L: RUN", TEXT), (48, 260, "TRIANGLE: AUTOMAP", TEXT),
-        (48, 284, "START: MENU", TEXT), (48, 320, "UP: QUICK SAVE", TEXT),
-        (48, 344, "DOWN: QUICK LOAD", TEXT), (48, 368, "LEFT/RIGHT: WEAPONS", TEXT),
-        (520, 96, "IN MENUS", GOLD), (520, 122, None, GOLD_DIM),
-        (520, 140, "UP/DOWN: MOVE", TEXT), (520, 164, "LEFT/RIGHT: CHANGE", TEXT),
-        (520, 188, "X: SELECT", TEXT), (520, 212, "START: CLOSE", TEXT),
-        (520, 236, "SAVES AND LOADS", DIM), (520, 260, "WORK IN GAME ONLY", DIM),
-        (520, 320, "BACK TO LAUNCHER", GOLD), (520, 344, "HOLD L+R+SELECT", TEXT),
-        (520, 368, "FOR ONE SECOND", DIM),
+        (48, 88, "IN GAME", GOLD), (48, 112, None, GOLD_DIM),
+        (48, 130, "LEFT STICK: MOVE", TEXT), (48, 152, "RIGHT STICK: TURN", TEXT),
+        (48, 174, "X: USE", TEXT), (48, 196, "SQUARE OR R: FIRE", TEXT),
+        (48, 218, "L: RUN", TEXT), (48, 240, "START: MENU", TEXT),
+        (48, 262, "TRIANGLE: AUTOMAP", TEXT),
+        (48, 284, "UP/DOWN: QUICK SAVE OR LOAD", TEXT),
+        (520, 88, "IN MENUS", GOLD), (520, 112, None, GOLD_DIM),
+        (520, 130, "UP/DOWN: MOVE", TEXT), (520, 152, "LEFT/RIGHT: CHANGE", TEXT),
+        (520, 174, "X: SELECT", TEXT), (520, 196, "START: CLOSE", TEXT),
+        (520, 218, "LEFT/RIGHT: WEAPONS", TEXT),
+        (520, 240, "SAVES AND LOADS WORK IN GAME", DIM),
+        (520, 262, "BACK TO LAUNCHER:", GOLD),
+        (520, 284, "HOLD L+R+SELECT FOR A SECOND", TEXT),
     ]:
         if label is None:
             canvas.rect(x, y, 400, 2, colour)
         else:
             canvas.text(x, y, label, colour)
 
-    canvas.text(48, 386, "PERFORMANCE", GOLD)
-    canvas.text_right(WIDTH - 48, 386, "FRAMERATE CHANGES WHEN A GAME STARTS", DIM)
+    canvas.text(48, 316, "PICTURE AND SPEED", GOLD)
+    canvas.text_right(WIDTH - 48, 316, "THEY APPLY WHEN A GAME STARTS", DIM)
 
-    for index, (label, x, y, width, height) in enumerate([
-        ("FRAMERATE", 48, 412, 864, 34), ("FRAME COUNTER", 48, 454, 864, 34),
-    ]):
+    for index, (label, x, y, width, height, value) in enumerate(OPTION_ROWS):
         selected = index == 0
         border = GOLD if selected else GOLD_DIM
         canvas.rect(x, y, width, height, PANEL if selected else BAR)
@@ -136,7 +137,7 @@ def options_screen() -> Canvas:
         canvas.rect(x, y, 2, height, border)
         canvas.rect(x + width - 2, y, 2, height, border)
         canvas.text(x + 20, y + 10, label, WHITE if selected else TEXT)
-        canvas.text(x + 250, y + 10, setting_value(index), READY if selected else DIM)
+        canvas.text(x + 250, y + 10, value, READY if selected else DIM)
         if selected:
             canvas.text_right(x + width - 20, y + 10, "X: CHANGE", GOLD_DIM)
 
@@ -158,9 +159,7 @@ def check_layout(canvas: Canvas) -> None:
         for x2, y2, w2, h2, second in canvas.texts[i + 1:]:
             if x1 < x2 + w2 and x2 < x1 + w1 and y1 < y2 + h2 and y2 < y1 + h1:
                 problems.append(f"{first!r} overlaps {second!r}")
-    for index, (label, x, y, width, height) in enumerate([
-        ("FRAMERATE", 48, 412, 864, 34), ("FRAME COUNTER", 48, 454, 864, 34),
-    ]):
+    for label, x, y, width, height, _value in OPTION_ROWS:
         for x1, y1, w1, h1, text in canvas.texts:
             if y1 >= y and y1 < y + height and y1 + h1 > y + height - 2:
                 problems.append(f"{text!r} touches the border of the {label} box")
