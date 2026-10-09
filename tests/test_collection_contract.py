@@ -282,9 +282,10 @@ class CollectionContractTests(unittest.TestCase):
             self.assertIn(hook, transport)
         self.assertIn("net_module_t net_vita_module =", transport)
         self.assertIn("SCE_NET_SO_NBIO", transport)
-        self.assertTrue((engine / "net_query_stub.c").is_file())
+        self.assertTrue((engine / "net_vita_glue.c").is_file())
         self.assertFalse((engine / "net_query.c").exists())
         self.assertFalse((engine / "net_gui.c").exists())
+        self.assertFalse((engine / "net_query_stub.c").exists())
         self.assertFalse((engine / "net_sdl.c").exists())
         # The vendored netgame layer is the version whose headers this tree
         # already carries (Chocolate Doom 2.3.0), not a newer one.
