@@ -255,6 +255,49 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn("fps_counter_tick();", source)
         self.assertIn("counter=%d", source)
 
+    def test_netgame_layer_is_wired_to_the_vita_transport(self):
+        engine = ROOT / "doomgeneric/doomgeneric"
+        features = (engine / "doomfeatures.h").read_text(encoding="utf-8")
+        # The engine's netgame code is compiled in, and the transport it uses
+        # is the console's own UDP sockets rather than the SDL one.
+        self.assertIn("#define FEATURE_MULTIPLAYER 1", features)
+        self.assertNotIn("#undef FEATURE_MULTIPLAYER", features)
+        loop = (engine / "d_loop.c").read_text(encoding="utf-8")
+        self.assertIn('#include "net_vita.h"', loop)
+        self.assertIn("NET_SV_AddModule(&net_vita_module);", loop)
+        self.assertIn("net_vita_module.InitClient();", loop)
+        self.assertIn("net_vita_module.ResolveAddress(myargv[i+1]);", loop)
+        self.assertNotIn("net_sdl_module", loop)
+        cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertIn("FEATURE_MULTIPLAYER=1", cmake)
+        self.assertIn("SceNet_stub SceNetCtl_stub", cmake)
+        # The transport is a net_module_t like the one it replaces, and the
+        # master-server/GUI half of the query code is not dragged in: without
+        # it there is no textscreen and no internet advertisement.
+        transport = (engine / "net_vita.c").read_text(encoding="utf-8")
+        for hook in ("NET_VITA_InitClient", "NET_VITA_InitServer",
+                     "NET_VITA_SendPacket", "NET_VITA_RecvPacket",
+                     "NET_VITA_AddrToString", "NET_VITA_FreeAddress",
+                     "NET_VITA_ResolveAddress"):
+            self.assertIn(hook, transport)
+        self.assertIn("net_module_t net_vita_module =", transport)
+        self.assertIn("SCE_NET_SO_NBIO", transport)
+        self.assertTrue((engine / "net_query_stub.c").is_file())
+        self.assertFalse((engine / "net_query.c").exists())
+        self.assertFalse((engine / "net_gui.c").exists())
+        self.assertFalse((engine / "net_sdl.c").exists())
+        # The vendored netgame layer is the version whose headers this tree
+        # already carries (Chocolate Doom 2.3.0), not a newer one.
+        for name in ("net_common.c", "net_structrw.c", "net_packet.c",
+                     "net_io.c", "net_loop.c", "net_server.c", "net_client.c",
+                     "net_common.h", "net_structrw.h"):
+            self.assertTrue((engine / name).is_file(), name)
+        # Joining is by address and hosting by -server: a plain start must
+        # still be a plain single player game.
+        self.assertIn('M_CheckParm("-server")', loop)
+        self.assertIn('M_CheckParmWithArgs("-connect", 1)', loop)
+        self.assertIn("if (addr != NULL)", loop)
+
     def test_readme_options_screenshot_is_generated_from_the_port(self):
         # The README shows the OPTIONS screen, and that image is not a
         # hand-made mock-up: scripts/prepare_screenshots.py redraws it from the

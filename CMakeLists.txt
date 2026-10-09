@@ -70,6 +70,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     FEATURE_VITA_DEH=1
     FEATURE_WAD_MERGE=0
     FEATURE_CHEX_COLLECTION=1
+    FEATURE_MULTIPLAYER=1
     DOOMGENERIC_RESX=320
     DOOMGENERIC_RESY=200
 )
@@ -78,7 +79,8 @@ target_link_libraries(${PROJECT_NAME}
     SceDisplay_stub SceCtrl_stub SceTouch_stub SceAudio_stub SceSysmodule_stub
     SceGxm_stub SceCommonDialog_stub SceAppMgr_stub SceAppUtil_stub
     SceIofilemgr_stub SceKernelDmacMgr_stub SceKernelThreadMgr_stub
-    ScePower_stub SceRtc_stub SceHid_stub SceSysmem_stub m c
+    ScePower_stub SceRtc_stub SceHid_stub SceSysmem_stub
+    SceNet_stub SceNetCtl_stub m c
 )
 
 vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME})

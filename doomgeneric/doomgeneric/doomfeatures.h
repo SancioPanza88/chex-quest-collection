@@ -5,6 +5,8 @@
 #define FEATURE_CHEX_COLLECTION 1
 #define FEATURE_SOUND 1
 #undef FEATURE_WAD_MERGE
-#undef FEATURE_MULTIPLAYER
+/* Two or more consoles playing together: the netgame layer of the engine,
+   with the Vita transport (net_vita.c). */
+#define FEATURE_MULTIPLAYER 1
 
 #endif
