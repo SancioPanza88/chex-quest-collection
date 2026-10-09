@@ -541,15 +541,9 @@ void NET_WriteSHA1Sum(net_packet_t *packet, sha1_digest_t digest)
     NET_WriteBlob(packet, digest, sizeof(sha1_digest_t));
 }
 
-boolean NET_ReadPRNGSeed(net_packet_t *packet, prng_seed_t seed)
-{
-    return NET_ReadBlob(packet, seed, sizeof(prng_seed_t));
-}
-
-void NET_WritePRNGSeed(net_packet_t *packet, prng_seed_t seed)
-{
-    NET_WriteBlob(packet, seed, sizeof(prng_seed_t));
-}
+// NET_ReadPRNGSeed()/NET_WritePRNGSeed() are gone with aes_prng.h: they only
+// carried the seed a game uses to sign in with a master server, and this
+// build does not talk to one.
 
 // "Safe" version of puts, for displaying messages received from the
 // network.

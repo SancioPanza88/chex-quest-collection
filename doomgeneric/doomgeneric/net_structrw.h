@@ -15,7 +15,8 @@
 #ifndef NET_STRUCTRW_H
 #define NET_STRUCTRW_H
 
-#include "aes_prng.h"
+// aes_prng.h is not part of this tree: the seed it carries is only used when
+// a game signs itself in with a master server, which this build does not do.
 #include "sha1.h"
 #include "net_defs.h"
 #include "net_packet.h"
@@ -44,8 +45,5 @@ void NET_WriteWaitData(net_packet_t *packet, net_waitdata_t *data);
 boolean NET_ReadWaitData(net_packet_t *packet, net_waitdata_t *data);
 
 void NET_SafePuts(char *msg);
-
-boolean NET_ReadPRNGSeed(net_packet_t *packet, prng_seed_t seed);
-void NET_WritePRNGSeed(net_packet_t *packet, prng_seed_t seed);
 
 #endif /* #ifndef NET_STRUCTRW_H */
