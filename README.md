@@ -113,6 +113,11 @@ The role, the game, the number of consoles and the address are all stored in
   reloads into the launcher, instead of starting a game with nobody in it.
 - **Co-operative, not deathmatch**: one shared level, one player per console.
   There is no second input on a single console, so this is a LAN feature.
+- **Chex Quest 2's own levels carry no co-op starts.** The game was finished in
+  a hurry and its maps have room for a single player, so in co-op the other
+  consoles spawn on player 1's start and push apart as soon as the game runs.
+  Chex Quest 1 and Chex Quest 3 carry proper cooperative starts and are not
+  affected.
 - **The level is already running when you get there.** The host started it as
   soon as everyone connected, so opening the game's menu and picking **NEW GAME**
   answers *you can't start a new game while you're in a network game*: that is

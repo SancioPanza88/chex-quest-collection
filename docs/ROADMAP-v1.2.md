@@ -43,7 +43,7 @@ There is no local VitaSDK, so every build comes from CI. The contract tests in
 | Cheats menu | not started |
 | Arena mode | not started |
 | Resolution experiment (renderer at 640x400) | not started — see the note below |
-| Co-op over the LAN (host/join screen, Vita UDP transport, netgame layer) | implemented on `v1.2-coop`; two consoles found the start handshake compiled out (black level), fixed — **needs a re-test on hardware** |
+| Co-op over the LAN (host/join screen, Vita UDP transport, netgame layer) | implemented on `v1.2-coop`; two consoles found the start handshake compiled out (black level), then Chex Quest 2 crashing on its missing cooperative starts, both fixed — **needs a re-test on hardware** |
 
 ## Requested features and verdicts
 

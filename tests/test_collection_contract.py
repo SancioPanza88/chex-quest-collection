@@ -573,6 +573,28 @@ class CollectionContractTests(unittest.TestCase):
                 continue
             self.assertNotIn(path.suffix.lower(), {".wad", ".deh", ".ipk3"})
 
+    def test_a_coop_player_without_a_start_still_gets_a_body(self):
+        # Found on two consoles: Chex Quest 2 co-op started the level and its
+        # music, then crashed with a black screen on both. The rushed Chex
+        # Quest 2 maps carry only player 1's start - Chex Quest 1's maps carry
+        # four cooperative starts, Chex Quest 2's carry none - so with a second
+        # console player 2 was put in the game with no body at all: players[1]
+        # .mo stayed NULL and P_PlayerThink dereferenced it on the first tic.
+        setup = (ROOT / "doomgeneric/doomgeneric/p_setup.c").read_text(encoding="utf-8")
+        load = setup.split("P_LoadThings (lumpnum+ML_THINGS);")[1].split("// if deathmatch")[0]
+        self.assertIn("if (!playeringame[i] || players[i].mo != NULL)", load)
+        self.assertIn("spawnhere = playerstarts[0];", load)
+        self.assertIn("spawnhere.type = i + 1;", load)
+        self.assertIn("P_SpawnPlayer(&spawnhere);", load)
+        # ... and the engine is untouched otherwise: the body the missing
+        # start would have left NULL is what the player think dereferences
+        # before it does anything else.
+        user = (ROOT / "doomgeneric/doomgeneric/p_user.c").read_text(encoding="utf-8")
+        self.assertIn("player->mo->flags", user.split("void P_PlayerThink")[1])
+        # p_setup.c spawns the player without including p_mobj.h, so the
+        # prototype has to be here, next to the one it already had.
+        self.assertIn("void P_SpawnPlayer (mapthing_t* mthing);", setup)
+
 
 if __name__ == "__main__":
     unittest.main()

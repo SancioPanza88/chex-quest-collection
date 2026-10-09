@@ -187,6 +187,39 @@ deliberately instead of uninitialised stack.
 looks like a crash. When the session was started from the co-op screen it now
 shows `CO-OP COULD NOT START` with a way back to the launcher instead.
 
+## Third test on two consoles: Chex Quest 2
+
+A PSTV and a PS Vita 2000, build `f9bff87`, **Chex Quest 2**. Both consoles
+crashed with `C2-12828-1` the instant the level started: the screen stayed
+black, the level music played, and then the application went down. Chex Quest 1
+and Chex Quest 3 co-op ran on the same build, so the fault was in Chex Quest
+2's own data, not in the netgame layer.
+
+**The rushed Chex Quest 2 maps only carry the first player start.** Chex
+Quest 1's maps carry four cooperative starts (and five deathmatch starts); the
+Chex Quest 2 maps, finished in a hurry, carry none - E1M1 "Spaceport" has a
+single player start and nothing else. Single player never notices, because
+player 0 is the only player then. In a netgame `LoadGameSettings` puts every
+console's player in the game (`playeringame[1] = true`), but `P_SpawnMapThing`
+spawns a player only for a start the map actually carries, so player 2 was left
+with `players[1].mo == NULL`. The very first tick runs `P_PlayerThink`, which
+dereferences `player->mo->flags` before it does anything else: on the first tic
+of the level both consoles read address zero and the console reports a crash.
+Black screen, music still playing, both consoles - exactly what was seen.
+
+The fix is in `P_SetupLevel` (`p_setup.c`): after `P_LoadThings`, a player that
+is in the game but has no body is spawned at a start the map does have - player
+1's start, or the origin if the map has no start at all. It is deterministic
+and runs identically on both consoles, so the lockstep is not disturbed, and
+single player is untouched: only player 0 is in the game and `P_SpawnMapThing`
+already gave it its body, so the loop skips it. A contract test holds the loop
+next to the `P_PlayerThink` dereference it prevents.
+
+With players 2-4 stacked on the one start the map has, they push each other
+apart the moment the game runs - as much as a rushed map can offer. The proper
+fix would be cooperative starts added to the Chex Quest 2 levels in a PWAD,
+which this project cannot ship.
+
 ## What is left, and it needs hardware
 
 Build `03a29c4` proves the sockets, the handshake, the automatic launch and the
