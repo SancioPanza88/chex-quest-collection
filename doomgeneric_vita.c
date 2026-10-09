@@ -1096,11 +1096,11 @@ static void show_coop_screen(void)
             redraw = 1;
         }
         if (coop_selected == COOP_ROW_JOIN) {
-            if ((pad.buttons & SCE_CTRL_R) && !(previous.buttons & SCE_CTRL_R)) {
+            if ((pad.buttons & SCE_CTRL_RTRIGGER) && !(previous.buttons & SCE_CTRL_RTRIGGER)) {
                 coop_part = (coop_part + 1) % COOP_ADDRESS_PARTS;
                 redraw = 1;
             }
-            if ((pad.buttons & SCE_CTRL_L) && !(previous.buttons & SCE_CTRL_L)) {
+            if ((pad.buttons & SCE_CTRL_LTRIGGER) && !(previous.buttons & SCE_CTRL_LTRIGGER)) {
                 coop_part = (coop_part + COOP_ADDRESS_PARTS - 1) % COOP_ADDRESS_PARTS;
                 redraw = 1;
             }
@@ -1159,11 +1159,11 @@ void VITA_NetWaitScreen(int connected, int expected, int is_controller)
     static int stop_hold = 0;
     char line[48];
     SceCtrlData pad;
-    int x, y;
+    int x;
 
     sceCtrlPeekBufferPositive(0, &pad, 1);
-    if ((pad.buttons & (SCE_CTRL_L | SCE_CTRL_R | SCE_CTRL_SELECT))
-        == (SCE_CTRL_L | SCE_CTRL_R | SCE_CTRL_SELECT)) {
+    if ((pad.buttons & (SCE_CTRL_LTRIGGER | SCE_CTRL_RTRIGGER | SCE_CTRL_SELECT))
+        == (SCE_CTRL_LTRIGGER | SCE_CTRL_RTRIGGER | SCE_CTRL_SELECT)) {
         if (++stop_hold >= 60)
             return_to_launcher();
     } else {
@@ -1201,8 +1201,7 @@ void VITA_NetWaitScreen(int connected, int expected, int is_controller)
         draw_menu_text(10, 144, "IT STARTS THE GAME AS SOON", L_COL_TEXT);
         draw_menu_text(10, 156, "AS EVERYONE IS IN.", L_COL_TEXT);
     }
-    y = 176;
-    draw_menu_text(10, y, "HOLD L+R+SELECT TO GO BACK", L_COL_TEXT_DIM, 1);
+    draw_menu_text(10, 176, "HOLD L+R+SELECT TO GO BACK", L_COL_TEXT_DIM);
 
     I_FinishUpdate();
 }
@@ -3418,7 +3417,7 @@ int main(int argc, char **argv) {
       } else if ((pad.buttons & SCE_CTRL_SELECT) && !(previous.buttons & SCE_CTRL_SELECT)) {
         show_options_screen();
         needs_draw = 1;
-      } else if ((pad.buttons & SCE_CTRL_R) && !(previous.buttons & SCE_CTRL_R)) {
+      } else if ((pad.buttons & SCE_CTRL_RTRIGGER) && !(previous.buttons & SCE_CTRL_RTRIGGER)) {
         /* The co-op screen chooses its own game, so R is a way into a game
            that does not go through the launcher rows. */
         show_coop_screen();

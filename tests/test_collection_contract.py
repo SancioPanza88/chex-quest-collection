@@ -329,7 +329,7 @@ class CollectionContractTests(unittest.TestCase):
         self.assertIn("%d OF %d CONSOLES IN", source)
         # The launcher opens it with R, and it says so.
         self.assertIn('"SELECT: OPTIONS   R: CO-OP"', source)
-        self.assertIn("if ((pad.buttons & SCE_CTRL_R) && !(previous.buttons & SCE_CTRL_R)) {", source)
+        self.assertIn("if ((pad.buttons & SCE_CTRL_RTRIGGER) && !(previous.buttons & SCE_CTRL_RTRIGGER)) {", source)
         self.assertIn("show_coop_screen();", source)
         self.assertIn("if (coop_ready)", source)
         # Four rows: which game, host or join, how many consoles, and the
