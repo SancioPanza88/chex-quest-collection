@@ -215,10 +215,41 @@ single player is untouched: only player 0 is in the game and `P_SpawnMapThing`
 already gave it its body, so the loop skips it. A contract test holds the loop
 next to the `P_PlayerThink` dereference it prevents.
 
-With players 2-4 stacked on the one start the map has, they push each other
-apart the moment the game runs - as much as a rushed map can offer. The proper
-fix would be cooperative starts added to the Chex Quest 2 levels in a PWAD,
-which this project cannot ship.
+## Fourth test, same level: the game started, the host died
+
+That first fix moved the failure rather than ending it. On the next build both
+consoles started the level and the joiner could move, but the **host** still
+went down with `C2-12828-1` right after the level music began. Two `debug.log`
+files from the same build say where: the Chex Quest 3 session logged
+`I_InitGraphics` and the port's palette line after `I_PlaySong`, the Chex Quest
+2 one stopped at `I_PlaySong` - the music is started early in `P_SetupLevel`,
+so the host died either in the rest of the level setup or in the first
+`TryRunTics()` of `D_DoomLoop`, before a single frame was drawn.
+
+The host also showed what the first fix had built: shooting damaged "something
+invisible" standing exactly where the player stood, and killing it left a
+corpse. That something was the second player. Spawning the missing player **on
+player 1's start** puts two bodies on one set of coordinates - the one inside
+the viewer is never drawn, blocks every step, and takes every shot.
+
+The loop now gives each missing player a spot of its own: the start the map
+keeps for that player if it has one, then a **deathmatch start** - a
+player-sized hole in the geometry that even a rushed single-player map carries,
+and the only kind of start Chex Quest 2's levels have left - and only then the
+first start, or the origin. The spot that gets used is written back to
+`playerstarts[i]`, which is what `G_DoReborn` reads for that player: without
+it, a player with no start of their own was respawned at the zeroed start of
+their slot, `P_SpawnPlayer` refused it (`type == 0`), their corpse was queued
+over and over and eventually freed from under `players[i].mo`. The two reads of
+a body on that path - `G_DoReborn`'s corpse handover and `G_CheckSpot`'s "is
+this spot free" scan - are NULL-safe now as well, because a map with a missing
+start can leave the body unset on both. The respawn path is the other half of
+the same missing start, and it had no guard at all.
+
+What is still true: Chex Quest 2's maps carry nothing but their single player
+start, so a second console begins the level in a deathmatch spot (or, on a map
+without even those, on player 1's start). The proper fix is cooperative starts
+added to the Chex Quest 2 levels in a PWAD, which this project cannot ship.
 
 ## What is left, and it needs hardware
 

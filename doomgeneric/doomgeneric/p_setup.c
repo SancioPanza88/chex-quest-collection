@@ -902,27 +902,48 @@ P_SetupLevel
     // A map does not have to carry a start for each player, and Chex Quest
     // 2's rushed levels only have the first one. A netgame still puts every
     // console's player in the game, so a player without a start would keep
-    // players[i].mo NULL and the first P_PlayerThink dereferences it: the
-    // black screen, with the level music still playing, that co-op hit on
-    // Chex Quest 2. Spawn a missing player at a start the map does have;
-    // single player is untouched, since player 0 is the only one in the game
-    // and a map always carries its start.
-    for (i = 0; i < MAXPLAYERS; ++i)
+    // players[i].mo NULL: P_PlayerThink dereferences it on the first tic (the
+    // black screen with the level music still playing that co-op hit on Chex
+    // Quest 2) and so does G_DoReborn whenever that player is respawned.
+    //
+    // The player also needs a spot of their own rather than the one the first
+    // start is on: two bodies on the same coordinates are worse than useless
+    // - the second player stands inside the first one, invisible, in the way
+    // of every step and in front of every shot. A rushed single-player map
+    // still marks player-sized holes in its geometry for deathmatch, so take
+    // one of those. The spot that gets used is written back to playerstarts
+    // [i], which is what the respawn code reads for this player.
+    //
+    // Deathmatch spawns every player itself further down, and single player is
+    // untouched: player 0 is the only one in the game and a map always
+    // carries its start.
+    if (!deathmatch)
     {
-	mapthing_t	spawnhere;
+	int	dmstarts = deathmatch_p - deathmatchstarts;
 
-	if (!playeringame[i] || players[i].mo != NULL)
-	    continue;
-
-	spawnhere = playerstarts[0];
-	if (spawnhere.type == 0)
+	for (i = 0; i < MAXPLAYERS; ++i)
 	{
-	    // No start at all: a body at the origin beats a crash.
-	    memset(&spawnhere, 0, sizeof(spawnhere));
-	    spawnhere.angle = 90;
+	    mapthing_t	spawnhere;
+
+	    if (!playeringame[i] || players[i].mo != NULL)
+		continue;
+
+	    spawnhere = playerstarts[i];
+	    if (spawnhere.type == 0 && i < dmstarts)
+		spawnhere = deathmatchstarts[i];
+	    if (spawnhere.type == 0)
+		spawnhere = playerstarts[0];
+	    if (spawnhere.type == 0)
+	    {
+		// No start at all: a body at the origin beats a crash.
+		memset(&spawnhere, 0, sizeof(spawnhere));
+		spawnhere.angle = 90;
+	    }
+
+	    spawnhere.type = i + 1;
+	    playerstarts[i] = spawnhere;
+	    P_SpawnPlayer(&spawnhere);
 	}
-	spawnhere.type = i + 1;
-	P_SpawnPlayer(&spawnhere);
     }
     
     // if deathmatch, randomly spawn the active players

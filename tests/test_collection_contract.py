@@ -583,8 +583,20 @@ class CollectionContractTests(unittest.TestCase):
         setup = (ROOT / "doomgeneric/doomgeneric/p_setup.c").read_text(encoding="utf-8")
         load = setup.split("P_LoadThings (lumpnum+ML_THINGS);")[1].split("// if deathmatch")[0]
         self.assertIn("if (!playeringame[i] || players[i].mo != NULL)", load)
+        self.assertIn("if (!deathmatch)", load)
+        self.assertIn("spawnhere = playerstarts[i];", load)
+        # A body of its own, not a copy of the first start: the second player
+        # used to stand inside the first one, invisible, in the way of every
+        # step and in front of every shot. A rushed single-player map has no
+        # cooperative starts left, but it does mark player-sized holes for
+        # deathmatch.
+        self.assertIn("if (spawnhere.type == 0 && i < dmstarts)", load)
+        self.assertIn("spawnhere = deathmatchstarts[i];", load)
         self.assertIn("spawnhere = playerstarts[0];", load)
         self.assertIn("spawnhere.type = i + 1;", load)
+        # ... recorded where the respawn code reads it, so a player the map
+        # gave no start can be respawned instead of left without a body.
+        self.assertIn("playerstarts[i] = spawnhere;", load)
         self.assertIn("P_SpawnPlayer(&spawnhere);", load)
         # ... and the engine is untouched otherwise: the body the missing
         # start would have left NULL is what the player think dereferences
@@ -594,6 +606,15 @@ class CollectionContractTests(unittest.TestCase):
         # p_setup.c spawns the player without including p_mobj.h, so the
         # prototype has to be here, next to the one it already had.
         self.assertIn("void P_SpawnPlayer (mapthing_t* mthing);", setup)
+        # The other half of the same problem: G_DoReborn takes the corpse away
+        # and then respawns at playerstarts[], so both the body and the start
+        # have to be there. A map without them left a NULL dereference and a
+        # zeroed start (x, y, angle, type) in the respawn path.
+        game = (ROOT / "doomgeneric/doomgeneric/g_game.c").read_text(encoding="utf-8")
+        reborn = game.split("void G_DoReborn (int playernum)")[1].split("void G_ScreenShot")[0]
+        self.assertIn("if (players[playernum].mo != NULL)", reborn)
+        check = game.split("G_CheckSpot\n(")[1].split("G_DeathMatchSpawnPlayer")[0]
+        self.assertIn("players[i].mo != NULL", check)
 
 
 if __name__ == "__main__":

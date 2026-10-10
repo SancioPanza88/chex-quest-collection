@@ -1127,7 +1127,8 @@ G_CheckSpot
     {
 	// first spawn of level, before corpses
 	for (i=0 ; i<playernum ; i++)
-	    if (players[i].mo->x == mthing->x << FRACBITS
+	    if (players[i].mo != NULL
+		&& players[i].mo->x == mthing->x << FRACBITS
 		&& players[i].mo->y == mthing->y << FRACBITS)
 		return false;	
 	return true;
@@ -1261,7 +1262,11 @@ void G_DoReborn (int playernum)
 	// respawn at the start
 
 	// first dissasociate the corpse 
-	players[playernum].mo->player = NULL;   
+	// A player a rushed map gave no start reaches this without a body at
+	// all, and a NULL dereference here is the crash on the tic that
+	// respawns them.
+	if (players[playernum].mo != NULL)
+	    players[playernum].mo->player = NULL;   
 		 
 	// spawn at random spot if in death match 
 	if (deathmatch) 
