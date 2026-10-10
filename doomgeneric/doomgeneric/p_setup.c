@@ -826,6 +826,58 @@ static void P_LoadReject(int lumpnum)
     }
 }
 
+/* Two players on the same coordinates cannot move at all: each one's solid
+   body blocks the other and nothing pushes them apart. A map that marks
+   fewer starts than there are players - Chex Quest 2's maps mark one, for the
+   first player - leaves the second body exactly on the first, so the engine
+   has to put it down somewhere else. */
+
+static boolean P_PlayerStandsAt (int playernum, fixed_t x, fixed_t y)
+{
+    int		i;
+
+    for (i = 0; i < MAXPLAYERS; ++i)
+	if (i != playernum && playeringame[i] && players[i].mo != NULL
+	    && players[i].mo->x == x && players[i].mo->y == y)
+	    return true;
+
+    return false;
+}
+
+static void P_SpreadPlayer (int playernum, mapthing_t *spot)
+{
+    static const int	ring[8][2] = {
+	{ 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 },
+	{ 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 }
+    };
+    mobj_t	*mo = players[playernum].mo;
+    int		step, d;
+
+    if (mo == NULL || !P_PlayerStandsAt (playernum, mo->x, mo->y))
+	return;
+
+    /* A fixed ring, walked in a fixed order: both consoles take the same
+       step, which is what keeps the two games in lockstep. */
+    for (step = 1; step <= 4; ++step)
+	for (d = 0; d < 8; ++d)
+	{
+	    fixed_t	x = mo->x + ring[d][0] * step * 48 * FRACUNIT;
+	    fixed_t	y = mo->y + ring[d][1] * step * 48 * FRACUNIT;
+
+	    if (!P_CheckPosition (mo, x, y))
+		continue;
+	    if (!P_TeleportMove (mo, x, y))
+		continue;
+
+	    spot->x = (short) (x >> FRACBITS);
+	    spot->y = (short) (y >> FRACBITS);
+	    return;
+	}
+
+    /* Nowhere free within reach: the map is too tight for a second body, and
+       one standing inside another is still a body. */
+}
+
 //
 // P_SetupLevel
 //
@@ -906,13 +958,12 @@ P_SetupLevel
     // black screen with the level music still playing that co-op hit on Chex
     // Quest 2) and so does G_DoReborn whenever that player is respawned.
     //
-    // The player also needs a spot of their own rather than the one the first
-    // start is on: two bodies on the same coordinates are worse than useless
-    // - the second player stands inside the first one, invisible, in the way
-    // of every step and in front of every shot. A rushed single-player map
-    // still marks player-sized holes in its geometry for deathmatch, so take
-    // one of those. The spot that gets used is written back to playerstarts
-    // [i], which is what the respawn code reads for this player.
+    // The player also needs a spot of their own: the start the map keeps for
+    // them, then a deathmatch start - a player-sized hole in the geometry
+    // that even a rushed single-player map carries - and, when the map has
+    // neither, a spot beside the one they landed on (P_SpreadPlayer). The spot
+    // that gets used is written back to playerstarts[i], which is what the
+    // respawn code reads for this player.
     //
     // Deathmatch spawns every player itself further down, and single player is
     // untouched: player 0 is the only one in the game and a map always
@@ -924,13 +975,20 @@ P_SetupLevel
 	for (i = 0; i < MAXPLAYERS; ++i)
 	{
 	    mapthing_t	spawnhere;
+	    int		k;
 
 	    if (!playeringame[i] || players[i].mo != NULL)
 		continue;
 
 	    spawnhere = playerstarts[i];
-	    if (spawnhere.type == 0 && i < dmstarts)
-		spawnhere = deathmatchstarts[i];
+	    if (spawnhere.type == 0)
+		for (k = 0; k < dmstarts; ++k)
+		    if (!P_PlayerStandsAt (i, deathmatchstarts[k].x << FRACBITS,
+					   deathmatchstarts[k].y << FRACBITS))
+		    {
+			spawnhere = deathmatchstarts[k];
+			break;
+		    }
 	    if (spawnhere.type == 0)
 		spawnhere = playerstarts[0];
 	    if (spawnhere.type == 0)
@@ -941,8 +999,13 @@ P_SetupLevel
 	    }
 
 	    spawnhere.type = i + 1;
-	    playerstarts[i] = spawnhere;
 	    P_SpawnPlayer(&spawnhere);
+
+	    /* Two players on one set of coordinates cannot move, and a map with
+	       no start for them leaves the second body on the first. */
+	    P_SpreadPlayer(i, &spawnhere);
+
+	    playerstarts[i] = spawnhere;
 	}
     }
     

@@ -590,14 +590,24 @@ class CollectionContractTests(unittest.TestCase):
         # step and in front of every shot. A rushed single-player map has no
         # cooperative starts left, but it does mark player-sized holes for
         # deathmatch.
-        self.assertIn("if (spawnhere.type == 0 && i < dmstarts)", load)
-        self.assertIn("spawnhere = deathmatchstarts[i];", load)
+        self.assertIn("spawnhere = deathmatchstarts[k];", load)
+        self.assertIn("P_PlayerStandsAt (i, deathmatchstarts[k].x << FRACBITS,", load)
         self.assertIn("spawnhere = playerstarts[0];", load)
         self.assertIn("spawnhere.type = i + 1;", load)
         # ... recorded where the respawn code reads it, so a player the map
         # gave no start can be respawned instead of left without a body.
         self.assertIn("playerstarts[i] = spawnhere;", load)
         self.assertIn("P_SpawnPlayer(&spawnhere);", load)
+        # A map with no other start at all still leaves the second body on the
+        # first one, and two players on one set of coordinates cannot move:
+        # the body is walked to the closest spot that a player fits in and
+        # nobody stands on.
+        self.assertIn("P_SpreadPlayer(i, &spawnhere);", load)
+        self.assertIn("if (mo == NULL || !P_PlayerStandsAt (playernum, mo->x, mo->y))", setup)
+        spread = setup.split("static void P_SpreadPlayer")[1].split("// P_SetupLevel")[0]
+        self.assertIn("if (!P_CheckPosition (mo, x, y))", spread)
+        self.assertIn("if (!P_TeleportMove (mo, x, y))", spread)
+        self.assertIn("spot->x = (short) (x >> FRACBITS);", spread)
         # ... and the engine is untouched otherwise: the body the missing
         # start would have left NULL is what the player think dereferences
         # before it does anything else.
