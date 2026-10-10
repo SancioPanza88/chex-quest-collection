@@ -1,9 +1,21 @@
 from pathlib import Path
 import struct
 import unittest
+import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 PNG_PALETTE = 3  # the colour type of an indexed PNG, which PIL calls "P"
+
+def png_chunks(path: Path):
+    """Every chunk of a PNG as (name, payload), header included."""
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise AssertionError(f"{path} is not a PNG")
+    offset = 8
+    while offset < len(data):
+        length, name = struct.unpack(">I4s", data[offset:offset + 8])
+        yield name, data[offset + 8:offset + 8 + length]
+        offset += 12 + length
 
 
 def png_header(path: Path) -> tuple[int, int, int]:
@@ -18,6 +30,56 @@ def png_header(path: Path) -> tuple[int, int, int]:
     width, height, _depth, colour, _comp, _filter, _interlace = struct.unpack(
         ">IIBBBBB", data[16:29])
     return width, height, colour
+
+
+def png_rows(path: Path) -> list[tuple[int, ...]]:
+    """The palette indices of every pixel, row by row, top to bottom.
+
+    Hand written for the same reason as png_header: no Pillow in the build
+    container. Only the 8-bit indexed PNGs this project writes are supported,
+    which is all the artwork there is.
+    """
+    width, height, depth, colour, _comp, _filter, interlace = struct.unpack(
+        ">IIBBBBB", path.read_bytes()[16:29])
+    if depth != 8 or colour != PNG_PALETTE or interlace:
+        raise AssertionError(f"{path} is not an 8-bit indexed PNG")
+    packed = b"".join(payload for name, payload in png_chunks(path) if name == b"IDAT")
+    data = zlib.decompress(packed)
+    rows: list[tuple[int, ...]] = []
+    previous = bytearray(width)  # the row above, unfiltered; zeros above the top one
+    offset = 0
+    for _ in range(height):
+        filter_type = data[offset]
+        line = bytearray(data[offset + 1:offset + 1 + width])
+        offset += 1 + width
+        for x in range(width):
+            left = line[x - 1] if x else 0
+            above = previous[x]
+            upper_left = previous[x - 1] if x else 0
+            if filter_type == 1:
+                line[x] = (line[x] + left) & 0xff
+            elif filter_type == 2:
+                line[x] = (line[x] + above) & 0xff
+            elif filter_type == 3:
+                line[x] = (line[x] + ((left + above) >> 1)) & 0xff
+            elif filter_type == 4:
+                estimate = left + above - upper_left
+                distances = (abs(estimate - left), abs(estimate - above),
+                             abs(estimate - upper_left))
+                predictor = (left if distances[0] <= distances[1] and distances[0] <= distances[2]
+                             else above if distances[1] <= distances[2] else upper_left)
+                line[x] = (line[x] + predictor) & 0xff
+        rows.append(tuple(line))
+        previous = line
+    return rows
+
+
+def png_palette(path: Path) -> list[tuple[int, int, int]]:
+    """The colour of every palette index, in order."""
+    for name, payload in png_chunks(path):
+        if name == b"PLTE":
+            return [tuple(payload[i:i + 3]) for i in range(0, len(payload), 3)]
+    raise AssertionError(f"{path} has no palette")
 
 
 class CollectionContractTests(unittest.TestCase):
@@ -57,6 +119,28 @@ class CollectionContractTests(unittest.TestCase):
                 width, height, colour = png_header(ROOT / filename)
                 self.assertEqual((width, height), size)
                 self.assertEqual(colour, PNG_PALETTE)
+
+    def test_the_bubble_icon_has_no_black_band(self):
+        # The home screen bubble is a square and the icon artwork is a wide
+        # banner with the logo across it, so the logo cannot be cropped without
+        # cutting the words in half: it sits on the artwork's own background.
+        # A fixed dark one was used instead, which quantizes to pure black, and
+        # it drew two black stripes - 31 of the icon's 128 rows at each end -
+        # across the bubble that the console and the store both show.
+        script = (ROOT / "scripts/prepare_artwork.py").read_text(encoding="utf-8")
+        self.assertIn("def artwork_background(", script)
+        self.assertIn('vita_png(icon, OUT / "icon0.png", (128, 128), artwork_background(icon))',
+                      script)
+        # ... and the icon that is actually committed shows the fix: whatever
+        # the artwork does not cover is its own colour, not a dark placeholder.
+        rows = png_rows(ROOT / "sce_sys/icon0.png")
+        palette = png_palette(ROOT / "sce_sys/icon0.png")
+        self.assertEqual(len(rows), 128)
+        for edge, row in (("top", rows[0]), ("bottom", rows[-1])):
+            if len(set(row)) == 1:  # a band, and not the artwork reaching the edge
+                with self.subTest(edge=edge):
+                    self.assertGreater(sum(palette[row[0]]), 120,
+                                       f"the icon ends on a {edge} black band")
 
     def test_launcher_uses_supplied_background_and_game_logos(self):
         source = (ROOT / "doomgeneric_vita.c").read_text(encoding="utf-8")
