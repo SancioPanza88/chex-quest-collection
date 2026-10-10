@@ -8,6 +8,10 @@ One Vita app for **Chex Quest 1**, **Chex Quest 2** and **Chex Quest 3: Vanilla 
 
 **Co-op over the LAN (new).** Two to four consoles on the same Wi-Fi play one game together. The **CO-OP** screen (**R** in the launcher) picks the game, **HOST THIS GAME** or **JOIN ANOTHER CONSOLE**, how many consoles take part, and the address to join — typed once with the pad and remembered afterwards. The host starts the game by itself as soon as everyone is connected, every console is checked against the others' game data before the level loads, and a session that cannot start says so and returns to the launcher instead of leaving a black screen. Nothing leaves your network: no account, no master server, no listing. Full details [below](#co-op).
 
+A co-op session on two consoles, the host's screen:
+
+![Two consoles in one level, the other player's sprite walking towards the host](docs/screenshots/coop-in-game.png)
+
 **60 frames per second (new).** The picture is drawn once per vertical blank and interpolated between the last two game tics, and it is presented double buffered, so turning the view neither steps at 35 Hz nor tears. The simulation keeps Doom's fixed 35 Hz timestep, so nothing about the game itself changed: the camera, monsters, projectiles, items, the weapon sway and the sector heights — **doors, lifts and moving floors** — are the ones interpolated.
 
 **Pacing you can pick, and a guard that keeps it honest (new).** The **OPTIONS** screen offers **60 FPS** (default), **30 FPS** (half the frames to draw, for the heaviest maps) and **35 FPS (classic)**, plus **AUTO SPEED**, which drops to 30 fps for the session when a scene genuinely cannot hold 55 fps, and a **FRAME COUNTER** in the corner.
@@ -47,6 +51,10 @@ One Vita app for **Chex Quest 1**, **Chex Quest 2** and **Chex Quest 3: Vanilla 
 | Co-op: hosting | Co-op: joining |
 |---|---|
 | ![Co-op screen set to host, showing this console's address](docs/screenshots/coop-host.png) | ![Co-op screen set to join, with the address of the host](docs/screenshots/coop-join.png) |
+
+| Co-op in game |
+|---|
+| ![Two consoles playing one level together; the host's view with the other player in front of it](docs/screenshots/coop-in-game.png) |
 
 ## Download and install
 
@@ -118,6 +126,9 @@ Two to four consoles on the same Wi-Fi can play one game together. Press **R** i
 the launcher to open the **CO-OP** screen: pick the game, pick **HOST THIS GAME**
 or **JOIN ANOTHER CONSOLE**, say how many consoles are taking part, and when you
 are joining, type the address of the console that hosts. **X** starts.
+
+![A co-op session on two consoles: the host's screen, with the other player in
+the level](docs/screenshots/coop-in-game.png)
 
 **UP/DOWN** chooses a row, **LEFT/RIGHT** changes its value. On the **JOIN** row
 the shoulders pick which part of the address is being changed (**L/R: PART**,
