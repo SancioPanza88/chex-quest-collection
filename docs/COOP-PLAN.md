@@ -246,9 +246,19 @@ this spot free" scan - are NULL-safe now as well, because a map with a missing
 start can leave the body unset on both. The respawn path is the other half of
 the same missing start, and it had no guard at all.
 
+Another hardware test then found the last piece of it: both players began on
+the same coordinates and **neither could move**, because each one's solid body
+blocks the other and nothing pushes them apart - and Chex Quest 2's maps are too
+thrifty with starts even for a deathmatch spot. `P_SpreadPlayer` (`p_setup.c`)
+now walks a body that shares its spot with another player around its start in a
+fixed ring, taking the first spot a player fits in (`P_CheckPosition`) that
+nobody stands on, and moves it there with `P_TeleportMove` - which does not
+trigger walkover line specials, so no accidental teleport. Both consoles walk
+the same ring in the same order, which is what keeps the lockstep.
+
 What is still true: Chex Quest 2's maps carry nothing but their single player
-start, so a second console begins the level in a deathmatch spot (or, on a map
-without even those, on player 1's start). The proper fix is cooperative starts
+start, so a second console begins the level in a deathmatch spot or, when there
+is none free, a few steps from player 1. The proper fix is cooperative starts
 added to the Chex Quest 2 levels in a PWAD, which this project cannot ship.
 
 ## What is left, and it needs hardware
