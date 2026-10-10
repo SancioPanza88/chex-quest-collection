@@ -13,7 +13,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 
 set(VITA_APP_NAME "Chex Quest Collection")
 set(VITA_TITLEID  "CHEX00004")
-set(VITA_VERSION  "01.00")
+set(VITA_VERSION  "02.00")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -w -fno-strict-aliasing -DNORMALUNIX -DLINUX -DVITA")
 

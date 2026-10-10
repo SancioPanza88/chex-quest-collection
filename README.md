@@ -1,8 +1,34 @@
 # Chex Quest Collection — PS Vita
 
-One Vita app for **Chex Quest 1**, **Chex Quest 2** and **Chex Quest 3: Vanilla Edition**. Pick a game in the launcher and press **Cross** or **START** to play it.
+One Vita app for **Chex Quest 1**, **Chex Quest 2** and **Chex Quest 3: Vanilla Edition**. Pick a game in the launcher and press **Cross** or **START** to play it: the games run at **60 frames per second** with a smooth, interpolated view, and **two to four consoles can play one game together over Wi-Fi**.
 
-The launcher is a proper menu now: it lists the three games plus a data-files row, shows at a glance which games are ready, plays menu music and blips, and can hand you the game data with a QR code if something is missing. Games run at **60 frames per second** with a smooth, interpolated view, and the old 35 fps pacing and a 30 fps mode are one press away in the options screen.
+## Version 2.0 — the final release
+
+**2.0 is the last update of this project**, and it is the release the whole tree has been building towards: the games draw at 60 fps, co-op works between consoles on the same router, and the launcher handles the game data on its own. Everything below ships in this version.
+
+**Co-op over the LAN (new).** Two to four consoles on the same Wi-Fi play one game together. The **CO-OP** screen (**R** in the launcher) picks the game, **HOST THIS GAME** or **JOIN ANOTHER CONSOLE**, how many consoles take part, and the address to join — typed once with the pad and remembered afterwards. The host starts the game by itself as soon as everyone is connected, every console is checked against the others' game data before the level loads, and a session that cannot start says so and returns to the launcher instead of leaving a black screen. Nothing leaves your network: no account, no master server, no listing. Full details [below](#co-op).
+
+**60 frames per second (new).** The picture is drawn once per vertical blank and interpolated between the last two game tics, and it is presented double buffered, so turning the view neither steps at 35 Hz nor tears. The simulation keeps Doom's fixed 35 Hz timestep, so nothing about the game itself changed: the camera, monsters, projectiles, items, the weapon sway and the sector heights — **doors, lifts and moving floors** — are the ones interpolated.
+
+**Pacing you can pick, and a guard that keeps it honest (new).** The **OPTIONS** screen offers **60 FPS** (default), **30 FPS** (half the frames to draw, for the heaviest maps) and **35 FPS (classic)**, plus **AUTO SPEED**, which drops to 30 fps for the session when a scene genuinely cannot hold 55 fps, and a **FRAME COUNTER** in the corner.
+
+**The launcher.** A proper menu: the three games plus a **DATA FILES** row, each game showing at a glance whether it is ready, menu music and blips, and the co-op and options screens. When a file is missing it does not fail: it opens a screen with a **QR code** for the game data, the folder to copy it into, and a live checklist that updates while you FTP the files across.
+
+**Quick save and quick load.** **D-pad Up** and **D-pad Down** in game, with a short on-screen confirmation ("QUICK SAVED", "QUICK LOADED", "NO QUICK SAVE YET"). Saves and settings are kept separately per game.
+
+**Back to the launcher without rebooting.** **Hold L + R + SELECT for one second** while playing: a progress bar fills and the app reloads into the launcher.
+
+**Artwork that fits the Vita.** The launcher layers, the LiveArea background, the startup image and the bubble icon are generated from the artwork sources by the scripts in `scripts/`, and the icon is painted on the banner's own background colour, so no black band appears around it on the home screen.
+
+**The contract tests run on every build (new).** The GitHub Actions workflow builds the VPK and runs the test suite, so a broken data file name, a moved save path or a staged WAD fails the build instead of reaching a console.
+
+| Launcher | Co-op: hosting | Co-op: joining |
+|---|---|---|
+| ![Launcher with all three games ready](docs/screenshots/launcher-ready.png) | ![Co-op screen set to host, showing this console's address](docs/screenshots/coop-host.png) | ![Co-op screen set to join, with the address of the host](docs/screenshots/coop-join.png) |
+
+| Options | Quick save | Return to launcher |
+|---|---|---|
+| ![Options screen: the control list with the boxed setting rows](docs/screenshots/options.png) | ![Quick saved confirmation](docs/screenshots/quick-save.png) | ![Hold L, R and Select to return to the launcher](docs/screenshots/return-to-launcher.png) |
 
 ## Screenshots
 
@@ -24,7 +50,7 @@ The launcher is a proper menu now: it lists the three games plus a data-files ro
 
 ## Download and install
 
-Get [`ChexQuestCollection.vpk`](https://github.com/SancioPanza88/chex-quest-collection/releases/latest/download/ChexQuestCollection.vpk) from Releases and install it on a homebrew-enabled PS Vita/PSTV (VitaShell, or any VPK installer).
+Get [`ChexQuestCollection.vpk`](https://github.com/SancioPanza88/chex-quest-collection/releases/latest/download/ChexQuestCollection.vpk) from Releases and install it on a homebrew-enabled PS Vita/PSTV (VitaShell, or any VPK installer). Version 2.0 is the final release of the collection.
 
 ## Installation and game data
 
@@ -52,6 +78,11 @@ If files are missing, the launcher says so instead of failing:
 - selecting the **DATA FILES** row (or pressing **Square**, or pressing **Cross** on a game that has no data yet) opens a screen with a **QR code** to download the data archive with your phone, a printable link, the folder to copy the files into, and a live checklist of the four files;
 - when the launcher starts with no game data at all, it opens that data screen first;
 - the status list is re-checked once per second, so files copied over FTP show up without restarting the app.
+
+These are the three games the collection supports. **Chex Quest 4: Escape from
+Bazoik**, the fan demo, is not one of them: it is a GZDoom mod (UDMF maps,
+compiled ACS scripts, DECORATE actors) and this app's engine cannot read any of
+that, so there is no way to add it as a fourth entry.
 
 ## PS Vita controls
 
