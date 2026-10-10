@@ -57,6 +57,7 @@ There is no local VitaSDK, so every build comes from CI. The contract tests in
 | Arena mode, single player | **Feasible** | new game mode on the installed maps, no new data files |
 | Arena co-op | **Depends on co-op** | only after the network prototype holds |
 | Split-screen co-op on one Vita | **Not practical** | two views and two inputs on a 960x544 screen, and it doubles the render cost |
+| Chex Quest 4 (fan demo) as a fourth game | **Not possible** | it is a GZDoom mod - UDMF maps, compiled ACS, DECORATE actors - and this engine reads none of them (see "8. Chex Quest 4" below) |
 
 ## 1. Cheats — feasible, low risk
 
@@ -255,6 +256,48 @@ Two viewpoints at once means rendering the world twice per frame (the renderer i
 software, so the cost doubles), a second input mapping, and a duplicated HUD
 inside 960x544. Each half would be 480x272 — the same budget we may not even
 reach at full screen for 60 fps. No.
+
+## 8. Chex Quest 4 — checked against the download, and it cannot be a fourth game
+
+The fan demo *Chex Quest 4: Escape from Bazoik* (ModDB, 28 July 2026, the first
+level) was dropped in the tree to be added as a fourth entry next to the three
+games. It cannot be added: it is a **GZDoom** mod, and the collection runs
+Chocolate Doom.
+
+Its own `CHEX4.WAD` (865,133 bytes, md5 `a36b3ca2923eecb0a447a9ce3517883d`)
+says so in its directory:
+
+| What the WAD carries | Why this engine cannot use it |
+| --- | --- |
+| both maps are a `TEXTMAP` lump with `namespace = "zdoom"` (UDMF) | `p_setup.c` loads `THINGS`/`LINEDEFS`/`SECTORS` from a map marker; nothing in the tree mentions `TEXTMAP`, so there is no UDMF reader at all |
+| `BEHAVIOR` and `SCRIPTS` (compiled ACS, e.g. `SetMusic("D_E3M1")`) | there is no ACS virtual machine in the tree |
+| `DECORATE` defining new actors (`slime_chex`, `CHEX_ULTRA`, `CHEX_CEREAL`) | DECORATE is a ZDoom feature; the new things would simply not exist |
+| `ZNODES` (ZDoom extended nodes) and a `TEXTURES` lump | the same family: ZDoom-only map and texture formats |
+| `MAPINFO` with `episode E4M1` | the episode the demo shows is made by ZDoom's MAPINFO; this engine takes its episodes from the IWAD |
+
+Nothing about this is a missing line of code in the launcher: a fourth row, a
+fourth data file and one more `-file` on the command line would be a small
+change, and the plumbing to load a PWAD over an IWAD already exists (Chex Quest
+2 uses it). What is missing is an **engine**. The download even ships its own
+`gzdoom.exe`, `gzdoom.pk3`, `game_support.pk3`, `lights.pk3` and
+`brightmaps.pk3`, and its instructions are "drag CHEX4.WAD on gzdoom.exe and pick
+the Chex Quest 3 configuration".
+
+How it could ever be played on a Vita, in decreasing order of plausibility:
+
+1. **Ship a ZDoom-family engine next to this one.** GZDoom wants OpenGL 3.3,
+   which the Vita does not have, and no ZDoom-family port is published for it:
+   LZDoom has been called "doable" since a 2020 bounty, and that bounty
+   repository was archived in 2024 with nothing shipped. This is a different
+   project, not a launcher entry.
+2. **Convert the demo to the Doom map format.** That means converting two UDMF
+   maps, rewriting their ACS, replacing three DECORATE actors with DeHackEd
+   frames, and redoing the textures — and then redistributing a modified
+   third-party mod, which this project does not do (nor does it distribute WAD
+   files at all).
+
+Neither is planned. Chex Quest 4 stays out of the collection: the three games it
+ships are the three this engine can actually run.
 
 ## 60 fps: what is interpolated, and the crash that was fixed
 
